@@ -11,10 +11,13 @@ Made by [@kpawnd](https://github.com/kpawnd).
 - Local Cloud policy name and Deep Freeze version information.
 - Diagnostic reports you can save as JSON.
 - A dark purple Metro interface with explanations when an action can't run.
+- A 6.5-second startup screen with live installation, policy and status checks.
 
 ## Using it
 
-Launch `HeavyRain.exe` and approve the Windows administrator prompt. Heavy Rain looks for `DFC.exe` automatically. If it can't find it, use **Locate DFC.exe** to select the copy supplied with your Deep Freeze installation.
+Copy `HeavyRain.exe` wherever you want to run it. The portable build includes its DLLs and the .NET runtime; there is nothing else to install for Heavy Rain itself.
+
+Launch it and approve the Windows administrator prompt. After the credit fades out, the startup log shows which libraries are loaded and the results of the local checks. Heavy Rain looks for `DFC.exe` automatically. If it can't find it, use **Locate DFC.exe** to select the copy supplied with your Deep Freeze installation.
 
 Enter a Deep Freeze password with command-line rights, then choose **Freeze PC** or **Thaw PC**. By default, the change applies on the next restart. Tick **Restart immediately after confirmation** if you want to restart now.
 
@@ -34,8 +37,10 @@ dotnet run --project tests/HeavyRain.Tests -c Release
 To build a standalone Windows x64 executable:
 
 ```powershell
-dotnet publish src/HeavyRain/HeavyRain.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
+dotnet publish src/HeavyRain/HeavyRain.csproj -c Release -o publish
 ```
+
+Use `publish/HeavyRain.exe` for distribution. The normal `bin` build folder contains separate DLLs; the published EXE bundles them. Native libraries unpack into the .NET temporary cache when needed.
 
 Run `HeavyRain.exe --demo` for a preview with sample data. Demo mode still asks for administrator privileges, but doesn't send commands to Deep Freeze.
 

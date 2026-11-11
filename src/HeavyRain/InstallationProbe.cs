@@ -15,7 +15,7 @@ public static class InstallationProbe
         return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
     }
 
-    public static InstallationInfo Inspect(string? overridePath)
+    public static InstallationInfo Inspect(string? overridePath, Action<string>? reportProgress = null, CancellationToken cancellationToken = default)
     {
         var products = new List<string>();
         var evidence = new List<string>();
@@ -28,6 +28,8 @@ public static class InstallationProbe
         };
         foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            reportProgress?.Invoke($"Reading {view} installation records…");
             try
             {
                 using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
@@ -39,7 +41,9 @@ public static class InstallationProbe
                     var displayName = entry?.GetValue("DisplayName") as string;
                     if (displayName is null || !(displayName.Contains("Faronics", StringComparison.OrdinalIgnoreCase) ||
                         displayName.Contains("Deep Freeze", StringComparison.OrdinalIgnoreCase))) continue;
-                    products.Add($"{displayName} {entry?.GetValue("DisplayVersion")}".Trim());
+                    var product = $"{displayName} {entry?.GetValue("DisplayVersion")}".Trim();
+                    products.Add(product);
+                    reportProgress?.Invoke($"Registered: {product}");
                     if (entry?.GetValue("InstallLocation") is string location && Path.IsPathFullyQualified(location))
                         candidates.Add(Path.Combine(location, "DFC.exe"));
                 }
@@ -51,6 +55,8 @@ public static class InstallationProbe
         foreach (var product in new[] { "Deep Freeze", "Deep Freeze Enterprise", "Deep Freeze Cloud", "Deep Freeze Install C-0" })
             candidates.Add(Path.Combine(Environment.GetFolderPath(root), "Faronics", product, "DFC.exe"));
 
+        cancellationToken.ThrowIfCancellationRequested();
+        reportProgress?.Invoke("Checking Deep Freeze service and driver registrations…");
         try
         {
             using var services = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services");
@@ -67,7 +73,19 @@ public static class InstallationProbe
         catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         { warnings.Add("Some service or driver registration records could not be read."); }
 
-        var path = overridePath ?? candidates.Distinct(StringComparer.OrdinalIgnoreCase).FirstOrDefault(File.Exists);
+        reportProgress?.Invoke($"Found {evidence.Count} matching service or driver registrations.");
+        string? path = null;
+        foreach (var candidate in overridePath is not null ? [overridePath] : candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            reportProgress?.Invoke($"Looking for {candidate}");
+            if (!File.Exists(candidate)) continue;
+            path = candidate;
+            reportProgress?.Invoke($"Found DFC.exe: {candidate}");
+            break;
+        }
+        if (path is null) reportProgress?.Invoke("DFC.exe was not found in the checked locations.");
+        foreach (var warning in warnings) reportProgress?.Invoke(warning);
         var version = "Unavailable";
         if (path is not null && File.Exists(path))
         {

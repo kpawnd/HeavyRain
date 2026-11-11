@@ -31,21 +31,23 @@ public partial class App : Application
             splash.Show();
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
             if (cancelled) return;
-            var minimumCreditTime = Task.Delay(6500);
-            window = new MainWindow();
-            await Task.WhenAll(window.InitializeAsync(splash.ReportProgress), minimumCreditTime);
+            await splash.RunStartupAsync(async () =>
+            {
+                window = new MainWindow();
+                await window.InitializeAsync(splash.ReportProgress);
+            });
             if (cancelled) return;
             ready = true;
             MainWindow = window;
             ShutdownMode = ShutdownMode.OnMainWindowClose;
-            window.Show();
+            window!.Show();
             splash.Close();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             if (cancelled) return;
             ready = true;
-            MessageBox.Show(splash, $"The toolkit could not start ({ex.GetType().Name}). Try launching the application again.",
+            MessageBox.Show(splash, $"Heavy Rain could not start ({ex.GetType().Name}). Try launching the application again.",
                 "Heavy Rain", MessageBoxButton.OK, MessageBoxImage.Error);
             window?.Close();
             splash.Close();

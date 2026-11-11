@@ -8,6 +8,7 @@
     <PackageReference Include="MahApps.Metro" Version="2.4.11" />
     <Resource Include="Assets\kpawnd-avatar.png" />
     <Resource Include="Assets\heavy-rain.ico" />
+    <EmbeddedResource Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -18,7 +19,12 @@
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\heavy-rain.ico</ApplicationIcon>
-    <Version>1.1.0</Version>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>false</PublishTrimmed>
+    <Version>1.2.0</Version>
     <Product>Heavy Rain</Product>
     <AssemblyTitle>Heavy Rain</AssemblyTitle>
     <Authors>kpawnd</Authors>

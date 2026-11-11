@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
@@ -42,6 +43,13 @@ public partial class MainWindow : MetroWindow
     public async Task InitializeAsync(Action<string>? reportProgress = null)
     {
         Log(demo ? "Demo mode started. No DFC processes will run." : $"Local session on {Environment.MachineName}. {(admin ? "Administrator" : "Read-only")}.");
+        reportProgress?.Invoke(admin ? "Administrator access confirmed." : "Running without administrator access.");
+        reportProgress?.Invoke($"Runtime ready: {RuntimeInformation.FrameworkDescription} ({RuntimeInformation.ProcessArchitecture}).");
+        var libraries = new[] { "HeavyRain.Core", "MahApps.Metro", "ControlzEx", "Microsoft.Xaml.Behaviors", "PresentationFramework", "PresentationCore", "WindowsBase" };
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetName()).OrderBy(assembly => assembly.Name))
+            if (libraries.Contains(assembly.Name)) reportProgress?.Invoke($"Loaded {assembly.Name}.dll ({assembly.Version}).");
+        reportProgress?.Invoke("Metro interface initialized.");
+        if (demo) reportProgress?.Invoke("Demo mode: using sample data; no Deep Freeze queries will run.");
         await RefreshAsync(true, reportProgress);
         if (!lifetime.IsCancellationRequested) timer.Start();
     }
@@ -52,37 +60,48 @@ public partial class MainWindow : MetroWindow
         SetBusy(true, "Querying this computer…");
         try
         {
-            reportProgress?.Invoke("Finding the local Deep Freeze installation…");
+            reportProgress?.Invoke(demo ? "Loading the sample installation…" : "Searching for the local Deep Freeze installation…");
             installation = demo
                 ? new("Demo — no executable", "Demo", ["Deep Freeze Cloud (sample)"], ["Sample installation evidence"], [])
-                : await Task.Run(() => InstallationProbe.Inspect(customPath));
+                : await Task.Run(() => InstallationProbe.Inspect(customPath, reportProgress, lifetime.Token), lifetime.Token);
+            lifetime.Token.ThrowIfCancellationRequested();
             DfcPathText.Text = installation.DfcPath ?? "DFC.exe was not found. Locate the vendor-supplied executable inside this PC.";
             InstallationText.Text = installation.Products.Length > 0 ? string.Join("\n", installation.Products)
                 : installation.Evidence.Length > 0 ? string.Join("\n", installation.Evidence)
                 : "No matching registration found. This is not proof that Deep Freeze is absent.";
-            reportProgress?.Invoke("Reading the local Cloud policy…");
-            policy = demo ? new("Sample policy", "Demo", "Simulated policy name.") : await Task.Run(CloudPolicyProbe.Inspect);
+            reportProgress?.Invoke(demo ? "Loading the sample Cloud policy…" : "Reading the Cloud policy window and local metadata…");
+            policy = demo ? new("Sample policy", "Demo", "Simulated policy name.") : await Task.Run(CloudPolicyProbe.Inspect, lifetime.Token);
+            lifetime.Token.ThrowIfCancellationRequested();
             PolicyNameText.Text = policy.Name ?? "Unavailable";
             PolicySourceText.Text = policy.Detail;
             PolicyNameText.ToolTip = policy.Source;
+            reportProgress?.Invoke(policy.Name is { } name ? $"Policy: {name} ({policy.Source})." : $"Policy unavailable. {policy.Detail}");
             var previous = status.State;
-            reportProgress?.Invoke("Checking the current protection state…");
+            reportProgress?.Invoke(demo ? "Loading the sample protection state…" : installation.DfcPath is not null
+                ? "Running DFC.exe get /ISFROZEN…" : "Skipping the protection query: DFC.exe is unavailable.");
             status = installation.DfcPath is { } path ? await client.QueryAsync(path, lifetime.Token)
                 : new(ProtectionState.Unknown, "The Deep Freeze control interface is unavailable. A Cloud agent may be present without the Deep Freeze protection component.", null);
-            reportProgress?.Invoke("Reading version information…");
+            lifetime.Token.ThrowIfCancellationRequested();
+            reportProgress?.Invoke($"Protection: {status.State}." + (status.State == ProtectionState.Unknown ? $" {status.Detail}" : ""));
+            reportProgress?.Invoke(demo ? "Loading the sample version…" : installation.DfcPath is not null
+                ? "Running DFC.exe get /VERSION…" : "Skipping the version query: DFC.exe is unavailable.");
             deepFreezeVersion = installation.DfcPath is { } versionPath ? await client.GetVersionAsync(versionPath, lifetime.Token) : "Unavailable";
+            lifetime.Token.ThrowIfCancellationRequested();
+            reportProgress?.Invoke($"Deep Freeze version: {deepFreezeVersion}.");
             VersionText.Text = deepFreezeVersion + (installation.DfcFileVersion is not "Unavailable" and not "Demo" ? $"\nDFC file: {installation.DfcFileVersion}" : "");
             checkedAt = DateTimeOffset.Now;
             RenderStatus();
-            reportProgress?.Invoke("Ready. Opening your dashboard…");
+            reportProgress?.Invoke(status.State == ProtectionState.Unknown ? "Dashboard ready; protection could not be verified." : "Dashboard ready.");
             if (log || previous != status.State) Log($"Status: {status.State}. {status.Detail}" + (status.ExitCode is { } code ? $" (DFC {code})" : ""));
         }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             status = new(ProtectionState.Unknown, "The query could not be completed. Refresh to try again.", null);
             checkedAt = DateTimeOffset.Now;
             RenderStatus();
             Log($"Query failed ({ex.GetType().Name}).");
+            reportProgress?.Invoke($"Query failed ({ex.GetType().Name}); the dashboard will show an unknown state.");
         }
         finally { SetBusy(false); }
     }

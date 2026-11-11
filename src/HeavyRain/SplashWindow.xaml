@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
-        Title="Heavy Rain — loading" Icon="Assets/heavy-rain.ico" Width="580" Height="390" ResizeMode="NoResize"
+        Title="Heavy Rain — loading" Icon="Assets/heavy-rain.ico" Width="640" Height="450" ResizeMode="NoResize"
         ShowTitleBar="False" WindowStartupLocation="CenterScreen" WindowTransitionsEnabled="False"
         Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
         GlowBrush="{StaticResource AccentStrongBrush}" FontFamily="Segoe UI" UseLayoutRounding="True">
@@ -18,7 +18,9 @@
                 </StackPanel>
                 <Button Content="×" Click="Close_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-16,-24,0" Padding="8,0" MinHeight="28" Width="28" FontSize="20" Background="Transparent" BorderThickness="0" ToolTip="Cancel startup" AutomationProperties.Name="Cancel startup"/>
             </Grid>
-            <Grid Grid.Row="1" VerticalAlignment="Center">
+            <Grid Grid.Row="1" ClipToBounds="True" Margin="0,16,0,18">
+            <Grid x:Name="CreditPanel" VerticalAlignment="Center">
+                <Grid.RenderTransform><TranslateTransform x:Name="CreditOffset"/></Grid.RenderTransform>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                 <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" Padding="4">
                     <Image Source="Assets/kpawnd-avatar.png" Width="98" Height="98" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="kpawnd GitHub profile image"/>
@@ -29,8 +31,31 @@
                     <TextBlock Text="github.com/kpawnd" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
                 </StackPanel>
             </Grid>
+            <Border x:Name="LogPanel" Visibility="Collapsed" Opacity="0" Background="{StaticResource InsetBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Padding="15,12">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock Text="STARTUP LOG" FontSize="10" Foreground="{StaticResource AccentBrush}"/>
+                        <TextBlock Text="LOCAL CHECKS" FontSize="10" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}"/>
+                    </Grid>
+                    <ScrollViewer x:Name="LogScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl x:Name="LogEntries" AutomationProperties.Name="Startup activity">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,7">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="52"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Time}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AccentBrush}" Opacity="0.8"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Message}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource TextBrush}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+            </Grid>
             <StackPanel Grid.Row="2">
-                <TextBlock x:Name="LoadingText" Text="Starting local protection tools…" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+                <TextBlock x:Name="LoadingText" Text="Starting local protection tools…" FontSize="12" Foreground="{StaticResource MutedBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
                 <TextBlock Text="Local control · Heavy Rain" FontSize="10" Foreground="{StaticResource MutedBrush}" Opacity="0.7" Margin="0,8,0,0"/>
             </StackPanel>
         </Grid>
