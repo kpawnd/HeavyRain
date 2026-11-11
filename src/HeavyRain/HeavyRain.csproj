@@ -24,7 +24,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <Product>Heavy Rain</Product>
     <AssemblyTitle>Heavy Rain</AssemblyTitle>
     <Authors>kpawnd</Authors>

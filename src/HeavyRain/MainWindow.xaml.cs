@@ -69,13 +69,21 @@ public partial class MainWindow : MetroWindow
             InstallationText.Text = installation.Products.Length > 0 ? string.Join("\n", installation.Products)
                 : installation.Evidence.Length > 0 ? string.Join("\n", installation.Evidence)
                 : "No matching registration found. This is not proof that Deep Freeze is absent.";
-            reportProgress?.Invoke(demo ? "Loading the sample Cloud policy…" : "Reading the Cloud policy window and local metadata…");
-            policy = demo ? new("Sample policy", "Demo", "Simulated policy name.") : await Task.Run(CloudPolicyProbe.Inspect, lifetime.Token);
+            reportProgress?.Invoke(demo ? "Loading the sample Cloud policy…" : "Discovering the Cloud policy in the registry…");
+            var previousPolicy = policy;
+            policy = demo ? new("Sample policy", "Demo", "Simulated policy name.")
+                : await Task.Run(() => CloudPolicyProbe.Inspect(reportProgress, lifetime.Token), lifetime.Token);
             lifetime.Token.ThrowIfCancellationRequested();
             PolicyNameText.Text = policy.Name ?? "Unavailable";
             PolicySourceText.Text = policy.Detail;
             PolicyNameText.ToolTip = policy.Source;
             reportProgress?.Invoke(policy.Name is { } name ? $"Policy: {name} ({policy.Source})." : $"Policy unavailable. {policy.Detail}");
+            if (log || previousPolicy.Name != policy.Name || previousPolicy.Source != policy.Source)
+            {
+                Log(policy.Name is { } policyName ? $"Policy: {policyName}. Source: {policy.Source}." : $"Policy unavailable. {policy.Detail}");
+                if (policy.Registry is { } registry)
+                    Log($"Policy registry scan: {registry.Keys.Length} keys, {registry.Fields.Length} policy fields, {registry.Candidates.Length} name candidates. Details are included in diagnostic reports.");
+            }
             var previous = status.State;
             reportProgress?.Invoke(demo ? "Loading the sample protection state…" : installation.DfcPath is not null
                 ? "Running DFC.exe get /ISFROZEN…" : "Skipping the protection query: DFC.exe is unavailable.");

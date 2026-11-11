@@ -48,7 +48,9 @@ Run `HeavyRain.exe --demo` for a preview with sample data. Demo mode still asks 
 
 The next-boot panel records requests made during the current session. It doesn't read back Deep Freeze's scheduled boot mode. Check the reported protection state after restarting.
 
-Policy detection reads the local Cloud agent's open window or cached registry metadata. It depends on the agent version, and cached values can be out of date. If no policy name is available, Heavy Rain says so. Local changes may also need to be reconciled with your Cloud policy.
+Policy detection searches Faronics registry keys in both 32-bit and 64-bit views, then falls back to the local Cloud window if it can't find an unambiguous name. Hover over the policy name to see its source. Local metadata can be out of date, and local changes may need to be reconciled with your Cloud policy.
+
+If the policy stays unavailable, use **Export diagnostics**. The report includes the registry paths checked, policy field names and types, recognized name candidates, and any scan errors or limits. Unrecognized fields are listed without their contents; passwords, tokens and policy IDs aren't read as policy names. Detection is read-only and doesn't modify the registry.
 
 Passwords aren't saved or included in reports. DFC receives the password as a process argument, so administrator tools or Windows command-line auditing may capture it.
 

@@ -2,6 +2,7 @@ namespace HeavyRain.Core;
 
 public sealed record CloudPolicyInfo(string? Name, string Source, string Detail)
 {
+    public PolicyRegistryScan? Registry { get; init; }
     public static CloudPolicyInfo Unavailable(string detail) => new(null, "Unavailable", detail);
 }
 

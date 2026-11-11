@@ -165,6 +165,93 @@ await Check("Policy reader accepts only an explicit, bounded current-policy labe
     return Task.CompletedTask;
 });
 
+foreach (var (valueName, expected) in new (string, int?)[]
+{
+    ("CurrentPolicyName", 0), ("Current Policy Name", 0), ("applied_policy_name", 0),
+    ("ACTIVE-POLICY-NAME", 0), ("AssignedPolicyName", 1), ("PolicyName", 2),
+    ("Policy Name", 2), ("PolicyId", null), ("CurrentPolicyId", null), ("PolicyGuid", null),
+    ("PolicyPassword", null), ("PolicyToken", null), ("PolicyData", null), ("Name", null)
+})
+await Check($"Registry policy field classification: {valueName}", () =>
+{
+    Assert(PolicyRegistryRules.NamePriority(@"HKLM\SOFTWARE\Faronics\Faronics Cloud", valueName) == expected, "Unsafe or missed policy field");
+    return Task.CompletedTask;
+});
+
+foreach (var branch in new[] { "History", "PolicyHistory", "Templates", "ScheduledPolicies", "Backups", "Default", "Pending", "Previous" })
+await Check($"Registry never treats {branch} as the active policy", () =>
+{
+    var path = @"HKLM\SOFTWARE\Faronics\Cloud\" + branch;
+    Assert(PolicyRegistryRules.NamePriority(path, "CurrentPolicyName") is null, "Historical or future policy selected");
+    Assert(PolicyRegistryRules.IsPolicyField(path, "CurrentPolicyName"), "Metadata missing from discovery");
+    return Task.CompletedTask;
+});
+
+await Check("Generic policy names require Cloud context and Group Policy remains metadata only", () =>
+{
+    Assert(PolicyRegistryRules.NamePriority(@"HKLM\SOFTWARE\Faronics\OtherProduct", "PolicyName") is null, "Another product's policy selected");
+    Assert(PolicyRegistryRules.NamePriority(@"HKLM\SOFTWARE\Policies\Faronics\Cloud", "CurrentPolicyName") is null, "Group Policy treated as live Cloud state");
+    Assert(PolicyRegistryRules.IsPolicyField(@"HKLM\SOFTWARE\Faronics\Cloud\CurrentPolicy", "Name"), "Unknown policy field not discoverable");
+    return Task.CompletedTask;
+});
+
+foreach (var value in new[] { "", "\t", "line\nbreak", new string('x', 257), "{df17e344-f4e2-4d0e-bb46-df228311541a}" })
+await Check("Invalid registry strings and GUIDs are not policy names", () =>
+{
+    Assert(PolicyRegistryRules.ReadName(value) is null, "Invalid policy name accepted");
+    return Task.CompletedTask;
+});
+
+await Check("Registry names preserve spaces and Unicode", () =>
+{
+    Assert(PolicyRegistryRules.ReadName("  Office 雪 computers  ") == "Office 雪 computers", "Valid policy name changed");
+    return Task.CompletedTask;
+});
+
+static PolicyRegistryCandidate PolicyCandidate(string name, string view = "Registry64", int priority = 0) =>
+    new(name, @"HKLM\SOFTWARE\Faronics\Cloud", view, "CurrentPolicyName", priority);
+static PolicyRegistryScan PolicyScan(bool complete, params PolicyRegistryCandidate[] candidates) => new([], [], candidates, [], complete);
+
+await Check("Matching policy names across registry views resolve with their exact source", () =>
+{
+    var scan = PolicyScan(true, PolicyCandidate("DEPLOYMENT"), PolicyCandidate("deployment", "Registry32"));
+    var result = scan.Resolve();
+    Assert(result.Name == "DEPLOYMENT" && result.Source.EndsWith(@"CurrentPolicyName (Registry64)"), "Source or name lost");
+    Assert(ReferenceEquals(result.Registry, scan), "Registry discovery was not retained");
+    return Task.CompletedTask;
+});
+
+await Check("Conflicting registry views do not silently choose a policy", () =>
+{
+    var result = PolicyScan(true, PolicyCandidate("Office"), PolicyCandidate("Lab", "Registry32")).Resolve();
+    Assert(result.Name is null && result.Detail.Contains("conflict"), "Conflicting names were treated as certain");
+    return Task.CompletedTask;
+});
+
+await Check("An explicit current name takes precedence over generic or assigned names", () =>
+{
+    var result = PolicyScan(true, PolicyCandidate("Generic", priority: 2), PolicyCandidate("Assigned", priority: 1), PolicyCandidate("Current")).Resolve();
+    Assert(result.Name == "Current", "Generic metadata replaced an explicit current policy");
+    return Task.CompletedTask;
+});
+
+await Check("Incomplete registry discovery cannot silently select a partial match", () =>
+{
+    var result = PolicyScan(false, PolicyCandidate("Office")).Resolve();
+    Assert(result.Name is null && result.Detail.Contains("incomplete"), "Partial search reported a verified policy");
+    return Task.CompletedTask;
+});
+
+await Check("Unavailable policy diagnostics keep checked keys and unknown field metadata", () =>
+{
+    var scan = new PolicyRegistryScan([new(@"HKLM\SOFTWARE\Faronics", "Registry32", "Read")],
+        [new(@"HKLM\SOFTWARE\Faronics\Cloud", "Registry32", "PolicyData", "Binary", "Metadata only")], [], [], true);
+    var result = scan.Resolve();
+    var json = JsonSerializer.Serialize(result);
+    Assert(result.Name is null && json.Contains("PolicyData") && json.Contains("Registry32") && json.Contains("Metadata only"), "Discovery evidence was lost from the report");
+    return Task.CompletedTask;
+});
+
 Console.WriteLine($"\n{passed} passed, {failed} failed.");
 return failed == 0 ? 0 : 1;
 
