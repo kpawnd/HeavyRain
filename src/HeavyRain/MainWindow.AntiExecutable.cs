@@ -17,6 +17,7 @@ public partial class MainWindow
     private string? aecCustomPath;
     private string? aecVersion;
     private bool aecUncertain;
+    private AecAction? aecPendingAction;
 
     private async Task RefreshAecAsync(bool inspectMetadata, bool log, Action<string>? progress = null)
     {
@@ -59,6 +60,16 @@ public partial class MainWindow
         aecStatus = result;
         aecCheckedAt = DateTimeOffset.Now;
         if (result.State != AecState.Unknown) aecUncertain = false;
+        if (result.State != AecState.Unknown && aecPendingAction is { } pending)
+        {
+            var desired = pending switch { AecAction.Enable => AecState.Enabled, AecAction.Disable => AecState.Disabled, _ => AecState.Maintenance };
+            var observed = result.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", _ => "Maintenance" };
+            var detail = result.State == desired ? $"{pending} verified by the latest status check: {observed}."
+                : $"{pending} was requested; the latest status check reports {observed}.";
+            AecPendingText.Text = $"{DateTime.Now:HH:mm:ss} · {detail}";
+            Log($"Anti-Executable: {detail}");
+            aecPendingAction = null;
+        }
         AecStateText.Text = result.Diagnostic switch
         {
             AecDiagnostic.ExternalUser => "Not authorized",
@@ -94,6 +105,7 @@ public partial class MainWindow
         {
             var result = await aecClient.QueryAsync(aecInstallation!.Path!, password, lifetime.Token);
             lifetime.Token.ThrowIfCancellationRequested();
+            SetActivity(false);
             ApplyAecStatus(result);
             Log($"Anti-Executable status: {AecStateText.Text}. {result.Detail}");
             if (result.State == AecState.Unknown)
@@ -113,6 +125,7 @@ public partial class MainWindow
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            SetActivity(false);
             ApplyAecStatus(new(AecState.Unknown, "The status query failed. Check Anti-Executable and try again."));
             Log($"Anti-Executable status query failed ({ex.GetType().Name}).");
             new ActionNoticeWindow(new("Anti-Executable status is unavailable", aecStatus.Detail)) { Owner = this }.ShowDialog();
@@ -141,19 +154,30 @@ public partial class MainWindow
                 { AffirmativeButtonText = "Confirm change", NegativeButtonText = "Cancel", DefaultButtonFocus = MessageDialogResult.Negative });
             if (confirmation != MessageDialogResult.Affirmative || lifetime.IsCancellationRequested) return;
             sent = true;
-            var result = await aecClient.ChangeAsync(aecInstallation!.Path!, password, action, allowMaintenanceDisable: action == AecAction.Disable, cancellationToken: lifetime.Token);
+            var result = await aecClient.ChangeAsync(aecInstallation!.Path!, password, action, allowMaintenanceDisable: action == AecAction.Disable, cancellationToken: lifetime.Token,
+                verificationProgress: (attempt, observed) =>
+                {
+                    if (lifetime.IsCancellationRequested) return;
+                    var state = observed.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", AecState.Maintenance => "Maintenance", _ => "Unknown" };
+                    AecPendingText.Text = $"Verifying {action} · check {attempt} · {state}";
+                    Log($"Anti-Executable {action}: verification {attempt}, {state} (AEC exit {observed.ExitCode?.ToString() ?? "unavailable"}).");
+                });
             if (lifetime.IsCancellationRequested) return;
+            SetActivity(false);
             ApplyAecStatus(result.Status ?? new(AecState.Unknown, "Check status to verify the current Anti-Executable state."));
             aecUncertain = result.Outcome == ChangeOutcome.Uncertain;
+            aecPendingAction = aecUncertain ? action : null;
             AecPendingText.Text = $"{DateTime.Now:HH:mm:ss} · {result.Detail}";
             Log($"Anti-Executable {action}: {result.Outcome}. {result.Detail}");
-            if (result.Outcome != ChangeOutcome.Accepted)
+            if (result.Outcome is ChangeOutcome.Rejected or ChangeOutcome.Uncertain)
                 new ActionNoticeWindow(new("Anti-Executable change was not confirmed", result.Detail)) { Owner = this }.ShowDialog();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            SetActivity(false);
             aecUncertain = sent;
+            aecPendingAction = sent ? action : null;
             ApplyAecStatus(new(AecState.Unknown, "The operation could not be completed. Check status before retrying."));
             AecPendingText.Text = sent ? "The last request has an unknown outcome. It may have taken effect." : "No change was sent.";
             Log($"Anti-Executable operation failed ({ex.GetType().Name}). {AecPendingText.Text}");

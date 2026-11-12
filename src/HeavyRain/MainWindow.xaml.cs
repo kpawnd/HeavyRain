@@ -140,12 +140,17 @@ public partial class MainWindow : MetroWindow
     private void SetBusy(bool value)
     {
         busy = value;
-        ActivityProgress.IsIndeterminate = value;
-        ActivityProgress.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
+        SetActivity(value);
         RefreshButton.IsEnabled = BrowseButton.IsEnabled = DetectButton.IsEnabled = ExportButton.IsEnabled = !value;
         PasswordInput.IsEnabled = RestartCheck.IsEnabled = !value;
         AecPasswordInput.IsEnabled = AecBrowseButton.IsEnabled = AecDetectButton.IsEnabled = !value;
         UpdateControls();
+    }
+
+    private void SetActivity(bool value)
+    {
+        ActivityProgress.IsIndeterminate = value;
+        ActivityProgress.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdateControls()

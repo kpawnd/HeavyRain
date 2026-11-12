@@ -83,6 +83,14 @@ internal static class AecDiagnosticChecks
             Assert(result.Outcome == ChangeOutcome.Accepted && diagnostics.Calls == 0 && runner.Calls.Count == 3, "Mutation was diagnosed or retried");
         });
 
+        await check("AEC change verification does not substitute a password-free diagnostic for authenticated status", async () =>
+        {
+            var diagnostics = new DiagnosticReader(AecDiagnostic.ExternalUser);
+            var runner = new FakeRunner(new(0, Output: "Protected"), new(0), new(0), new(0, Output: "Unprotected"));
+            var result = await new AecClient(runner, diagnostics).ChangeAsync("AEC.exe", "example-secret", AecAction.Disable);
+            Assert(result.Outcome == ChangeOutcome.Accepted && diagnostics.Calls == 0 && runner.Calls.Count == 4, "Transient blank response used an unrelated diagnostic");
+        });
+
         if (!OperatingSystem.IsWindows() || !Environment.Is64BitProcess) return;
         var executable = Path.ChangeExtension(Assembly.GetExecutingAssembly().Location, ".exe");
         var previous = Environment.GetEnvironmentVariable(FixtureVariable);

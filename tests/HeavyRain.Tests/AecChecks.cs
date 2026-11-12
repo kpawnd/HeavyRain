@@ -143,8 +143,52 @@ internal static class AecChecks
         foreach (var output in new[] { "", "Protected", "Invalid AEAdmin Password" })
         await check("AEC exit zero is insufficient without matching readback", async () =>
         {
-            var runner = new FakeRunner(new ProcessResult(0, Output: "Protected"), new(0), new(0, Output: output));
-            Assert((await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Disable)).Outcome == ChangeOutcome.Uncertain && runner.Calls.Count == 3, "False success");
+            var runner = new FakeRunner([new(0, Output: "Protected"), new(0), .. Enumerable.Repeat(new ProcessResult(0, Output: output), 6)]);
+            var result = await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Disable);
+            Assert(result.Outcome == ChangeOutcome.Uncertain && runner.Calls.Count == (output.Contains("Password") ? 3 : 8), "False success or unbounded verification");
+            Assert(runner.Calls.Count(call => call[0] == "protect") == 1 && result.Detail.Contains("Disable was requested"), "Duplicate change or unspecified action");
+            if (output == "Protected") Assert(result.Detail.Contains("still reports Protected"), "Observed mismatch was hidden");
+        });
+
+        foreach (var (initial, action, final) in new[]
+        {
+            ("Unprotected", AecAction.Enable, "Protected"),
+            ("Protected", AecAction.Disable, "Unprotected"),
+            ("Protected", AecAction.Maintenance, "Maintenance")
+        })
+        await check($"AEC {action} tolerates an empty response and delayed state update", async () =>
+        {
+            var runner = new FakeRunner(new(0, Output: initial), new(0), new(0), new(0, Output: initial), new(0, Output: final));
+            var progress = new List<(int Attempt, AecStatusResult Status)>();
+            var result = await new AecClient(runner).ChangeAsync("AEC.exe", "test-password", action, verificationProgress: (attempt, status) => progress.Add((attempt, status)));
+            Assert(result.Outcome == ChangeOutcome.Accepted && runner.Calls.Count == 5, "Delayed change was not verified");
+            Assert(runner.Calls.Count(call => call[0] != "status") == 1, "Mutation was retried");
+            Assert(runner.Calls.All(call => call[^1] == "/pw=test-password"), "Authentication was lost during verification");
+            Assert(progress.Count == 3 && progress.Select(item => item.Attempt).SequenceEqual(new[] { 1, 2, 3 }) && progress[0].Status.State == AecState.Unknown && progress[^1].Status.State == result.Status?.State, "Verification progress was missing or inaccurate");
+            Assert(!JsonSerializer.Serialize(progress.Select(item => item.Status)).Contains("test-password"), "Progress exposed the password");
+        });
+
+        await check("AEC verification cancellation preserves uncertainty without retrying the change", async () =>
+        {
+            using var cancellation = new CancellationTokenSource();
+            var runner = new VerificationRunner(cancellation);
+            var result = await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Disable, cancellationToken: cancellation.Token);
+            Assert(result.Outcome == ChangeOutcome.Uncertain && result.Status?.State == AecState.Unknown && runner.Calls == 3, "Cancelled verification lost uncertainty or retried");
+        });
+
+        await check("AEC verification exception does not lose the outcome of an already sent change", async () =>
+        {
+            var runner = new VerificationRunner(throwOnReadback: true);
+            var result = await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Disable);
+            Assert(result.Outcome == ChangeOutcome.Uncertain && runner.Calls == 3 && !JsonSerializer.Serialize(result).Contains("sensitive failure"), "Exception leaked or change was retried");
+        });
+
+        await check("AEC verification has a deadline even when the status process hangs", async () =>
+        {
+            var runner = new VerificationRunner();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var result = await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Disable);
+            Assert(result.Outcome == ChangeOutcome.Uncertain && runner.Calls == 3 && clock.Elapsed < TimeSpan.FromSeconds(13), "Verification did not stop at its deadline");
         });
 
         foreach (var response in new[] { new ProcessResult(null, true), new ProcessResult(null, Error: "example secret"), new ProcessResult(null) })
@@ -185,4 +229,19 @@ internal static class AecChecks
     }
 
     private static void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
+
+    private sealed class VerificationRunner(CancellationTokenSource? cancellation = null, bool throwOnReadback = false) : ICommandRunner
+    {
+        public int Calls { get; private set; }
+        public async Task<ProcessResult> RunAsync(string path, IReadOnlyList<string> arguments, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            if (Calls == 1) return new(0, Output: "Protected");
+            if (Calls == 2) return new(0);
+            if (throwOnReadback) throw new IOException("sensitive failure");
+            if (cancellation is not null) { cancellation.Cancel(); return new(0); }
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new Exception("Unreachable");
+        }
+    }
 }

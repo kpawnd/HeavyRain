@@ -33,7 +33,8 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
     }
 
     public async Task<AecChangeResult> ChangeAsync(string path, string password, AecAction action,
-        bool allowMaintenanceDisable = false, CancellationToken cancellationToken = default)
+        bool allowMaintenanceDisable = false, CancellationToken cancellationToken = default,
+        Action<int, AecStatusResult>? verificationProgress = null)
     {
         if (!Enum.IsDefined(action)) return new(ChangeOutcome.Rejected, "Invalid Anti-Executable action.");
         if (!ValidPassword(password)) return new(ChangeOutcome.Rejected, "The Anti-Executable password contains unsupported control characters or is too long.");
@@ -64,15 +65,56 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
         if (result.ExitCode != 0 || failure is not null)
             return new(ChangeOutcome.Rejected, failure ?? $"AEC rejected the request (exit {result.ExitCode}). Check the installed version and Anti-Executable permissions.", PasswordFailure(result, password.Length > 0), result.ExitCode);
 
-        var verified = await QueryAsync(path, password, cancellationToken);
-        if (verified.State != desired)
-            return new(ChangeOutcome.Uncertain, "AEC returned, but the requested state could not be verified. Check status before retrying.", verified, result.ExitCode);
-        return new(ChangeOutcome.Accepted, action switch
+        return await VerifyChangeAsync(path, password, action, desired, result.ExitCode, cancellationToken, verificationProgress);
+    }
+
+    private async Task<AecChangeResult> VerifyChangeAsync(string path, string password, AecAction action,
+        AecState desired, int? commandExitCode, CancellationToken cancellationToken, Action<int, AecStatusResult>? verificationProgress)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        var verified = new AecStatusResult(AecState.Unknown, "The requested state has not been verified.");
+        var checks = 0;
+        try
         {
-            AecAction.Enable => "Anti-Executable protection is enabled. Status was verified.",
-            AecAction.Disable => "Anti-Executable protection is disabled. Status was verified.",
-            _ => "Maintenance is active. One hour was requested; AEC status does not report the remaining time."
-        }, verified, result.ExitCode);
+            for (var attempt = 0; attempt < 6; attempt++)
+            {
+                if (attempt > 0) await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token);
+                deadline.Token.ThrowIfCancellationRequested();
+                var response = await RunAsync(path, ["status"], password, deadline.Token);
+                checks++;
+                deadline.Token.ThrowIfCancellationRequested();
+                verified = TransportSucceeded(response) && string.IsNullOrWhiteSpace(response.Output) && string.IsNullOrWhiteSpace(response.StandardError)
+                    ? new(AecState.Unknown, "AEC returned no status while the change was being verified.", response.ExitCode)
+                    : ParseStatus(response, password.Length > 0);
+                verificationProgress?.Invoke(checks, verified);
+                if (verified.State == desired)
+                    return new(ChangeOutcome.Accepted, action switch
+                    {
+                        AecAction.Enable => "Anti-Executable protection is enabled. Status was verified.",
+                        AecAction.Disable => "Anti-Executable protection is disabled. Status was verified.",
+                        _ => "Maintenance is active. One hour was requested; AEC status does not report the remaining time."
+                    }, verified, commandExitCode);
+                if (verified.Diagnostic is AecDiagnostic.PasswordRequired or AecDiagnostic.PasswordRejected || !TransportSucceeded(response)) break;
+            }
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            verified = new(AecState.Unknown, "Status verification stopped before the requested state could be confirmed.");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            verified = new(AecState.Unknown, "The status query failed while verifying the change.");
+        }
+        var observed = verified.State switch
+        {
+            AecState.Enabled => "AEC still reports Protected.",
+            AecState.Disabled => "AEC still reports Unprotected.",
+            AecState.Maintenance => "AEC still reports Maintenance.",
+            _ => verified.Diagnostic is AecDiagnostic.PasswordRequired or AecDiagnostic.PasswordRejected ? verified.Detail
+                : "AEC did not provide a readable current state."
+        };
+        return new(ChangeOutcome.Uncertain, $"{action} was requested but not verified after {checks} status {(checks == 1 ? "check" : "checks")}. {observed} Check status before retrying; the change command was sent only once.", verified, commandExitCode);
     }
 
     public static AecStatusResult ParseStatus(ProcessResult result, bool passwordSupplied = false)

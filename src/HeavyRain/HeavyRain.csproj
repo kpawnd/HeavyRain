@@ -28,7 +28,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>1.4.3</Version>
+    <Version>1.4.4</Version>
     <Product>Heavy Rain</Product>
     <AssemblyTitle>Heavy Rain</AssemblyTitle>
     <Authors>kpawnd</Authors>
