@@ -4,6 +4,12 @@ A Windows app for Deep Freeze and Anti-Executable. Check protection, choose the 
 
 Made by [@kpawnd](https://github.com/kpawnd).
 
+## Screenshots
+
+![Deep Freeze tab showing a Frozen protection state, Cloud policy and version details](docs/deep-freeze.png)
+
+![Anti-Executable tab showing a Protected state confirmed by the Faronics provider](docs/anti-executable.png)
+
 ## Features
 
 - Frozen, thawed and unknown status, refreshed every 30 seconds.
