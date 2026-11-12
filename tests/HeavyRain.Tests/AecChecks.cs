@@ -226,9 +226,123 @@ internal static class AecChecks
         {
             Assert(await new AecClient(new FakeRunner(new ProcessResult(0, Output: output))).GetVersionAsync("AEC.exe") == expected, "Bad version");
         });
+
+        foreach (var (code, expected) in new (int?, AecState?)[] { (1105, AecState.Enabled), (1100, null), (1101, null), (1104, null), (null, null), (0, null), (2001, null) })
+        await check($"Provider protection code {code?.ToString() ?? "null"} maps only when confirmed", () =>
+        {
+            Assert(AecProvider.MapProtection(code) == expected, "Wrong protection mapping");
+            return Task.CompletedTask;
+        });
+
+        foreach (var (json, protection, present) in new (string, int?, bool)[]
+        {
+            ("{\"present\":true,\"Protection\":1105,\"DriverStatus\":\"Installed\",\"StatusFlags\":1073807556}", 1105, true),
+            ("{\"present\":true,\"Protection\":1100,\"DriverStatus\":\"Installed\"}", 1100, true),
+            ("[{\"present\":true,\"Protection\":1105}]", 1105, true)
+        })
+        await check("Provider JSON yields the reported protection code", () =>
+        {
+            var reading = AecProvider.ParseProviderJson(json);
+            Assert(reading is not null && reading.Protection == protection && reading.Present == present, "Reading not parsed");
+            return Task.CompletedTask;
+        });
+
+        await check("Provider present-false marks the class empty without a code", () =>
+        {
+            var reading = AecProvider.ParseProviderJson("{\"present\":false}");
+            Assert(reading is { Present: false, Protection: null }, "Empty class mishandled");
+            return Task.CompletedTask;
+        });
+
+        foreach (var json in new[] { "", "   ", "{\"error\":true}", "not json", "null", "{\"Protection\":\"text\"}" })
+        await check("Unreadable provider JSON is null or codeless, never a false code", () =>
+        {
+            var reading = AecProvider.ParseProviderJson(json);
+            Assert(reading is null || AecProvider.MapProtection(reading.Protection) is null, "Fabricated a protection state");
+            return Task.CompletedTask;
+        });
+
+        var enabledProvider = new AecProviderReading(1105, "Installed");
+        foreach (var (cliState, cliDetail) in new[] { (AecState.Disabled, "Anti-Executable execution protection is off."), (AecState.Unknown, "AEC returned no readable status.") })
+        await check($"Provider 1105 overrides a command line that reports {cliState}", () =>
+        {
+            var reconciled = AecProvider.Reconcile(new(cliState, cliDetail, 0), enabledProvider);
+            Assert(reconciled.State == AecState.Enabled && reconciled.Detail.Contains("Faronics provider"), "False negative not corrected");
+            Assert(cliState != AecState.Unknown ? reconciled.Detail.Contains("overriding") : reconciled.Detail.Contains("command line returned"), "Override wording lost");
+            return Task.CompletedTask;
+        });
+
+        await check("Provider agreement keeps the richer command-line detail", () =>
+        {
+            var cli = new AecStatusResult(AecState.Enabled, "Anti-Executable is enforcing its execution rules.", 0);
+            Assert(ReferenceEquals(AecProvider.Reconcile(cli, enabledProvider), cli), "Agreement rewrote the result");
+            return Task.CompletedTask;
+        });
+
+        foreach (var reading in new AecProviderReading?[] { null, new(1100, "Installed"), new(null, "Installed"), new(1105, "Installed", Present: false) })
+        await check("An unconfirmed or absent provider never changes the command-line verdict", () =>
+        {
+            var cli = new AecStatusResult(AecState.Disabled, "Anti-Executable execution protection is off.", 0);
+            Assert(ReferenceEquals(AecProvider.Reconcile(cli, reading), cli), "Unconfirmed reading altered the state");
+            return Task.CompletedTask;
+        });
+
+        await check("Provider read failure leaves the command-line status in place", async () =>
+        {
+            var client = new AecClient(new FakeRunner(new ProcessResult(0, Output: "Unprotected")), providerReader: new ThrowingProviderReader());
+            Assert((await client.QueryAsync("AEC.exe")).State == AecState.Disabled, "Provider failure changed the verdict");
+        });
+
+        await check("Status query trusts the provider over a false Unprotected", async () =>
+        {
+            var client = new AecClient(new FakeRunner(new ProcessResult(0, Output: "Unprotected")), providerReader: new FakeProviderReader(enabledProvider));
+            var result = await client.QueryAsync("AEC.exe");
+            Assert(result.State == AecState.Enabled && result.ExitCode == 0, "Provider did not correct the status");
+        });
+
+        await check("Enable verifies once the provider reports protection even if AEC keeps saying Unprotected", async () =>
+        {
+            var runner = new FakeRunner(new(0, Output: "Unprotected"), new(0), new(0, Output: "Unprotected"), new(0, Output: "Unprotected"));
+            var provider = new SequencedProviderReader(null, null, enabledProvider);
+            var result = await new AecClient(runner, providerReader: provider).ChangeAsync("AEC.exe", "pw", AecAction.Enable);
+            Assert(result.Outcome == ChangeOutcome.Accepted && result.Status?.State == AecState.Enabled, "Change not verified through the provider");
+            Assert(runner.Calls.Count(call => call[0] == "protect") == 1, "Change was retried");
+        });
+
+        await check("Provider reader runs a read-only CIM query and parses its JSON", async () =>
+        {
+            var runner = new FakeRunner(new ProcessResult(0, Output: "{\"present\":true,\"Protection\":1105,\"DriverStatus\":\"Installed\"}"));
+            var reading = await new AecProviderReader(runner, "powershell.exe").ReadAsync();
+            Assert(reading?.Protection == 1105, "Reader did not parse the query output");
+            Assert(runner.Calls.Count == 1 && runner.Calls[0][0] == "-NoProfile" && runner.Calls[0].Contains("-NonInteractive"), "Query was not read-only");
+            Assert(runner.Calls[0][^1].Contains("Get-CimInstance") && runner.Calls[0][^1].Contains("root/Faronics"), "Wrong provider query");
+        });
+
+        foreach (var response in new[] { new ProcessResult(1, Output: "{\"Protection\":1105}"), new ProcessResult(null, TimedOut: true), new ProcessResult(null, Error: "denied") })
+        await check("Provider reader reports nothing when the query transport fails", async () =>
+        {
+            Assert(await new AecProviderReader(new FakeRunner(response), "powershell.exe").ReadAsync() is null, "Failed query produced a reading");
+        });
     }
 
     private static void Assert(bool condition, string message) { if (!condition) throw new Exception(message); }
+
+    private sealed class FakeProviderReader(AecProviderReading? reading) : IAecProviderReader
+    {
+        public Task<AecProviderReading?> ReadAsync(CancellationToken cancellationToken = default) => Task.FromResult(reading);
+    }
+
+    private sealed class ThrowingProviderReader : IAecProviderReader
+    {
+        public Task<AecProviderReading?> ReadAsync(CancellationToken cancellationToken = default) => throw new InvalidOperationException("provider failure");
+    }
+
+    private sealed class SequencedProviderReader(params AecProviderReading?[] readings) : IAecProviderReader
+    {
+        private int index;
+        public Task<AecProviderReading?> ReadAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(readings[Math.Min(index++, readings.Length - 1)]);
+    }
 
     private sealed class VerificationRunner(CancellationTokenSource? cancellation = null, bool throwOnReadback = false) : ICommandRunner
     {

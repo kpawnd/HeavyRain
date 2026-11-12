@@ -7,7 +7,7 @@ public enum AecAction { Enable, Disable, Maintenance }
 public sealed record AecStatusResult(AecState State, string Detail, int? ExitCode = null, AecDiagnostic Diagnostic = AecDiagnostic.None);
 public sealed record AecChangeResult(ChangeOutcome Outcome, string Detail, AecStatusResult? Status = null, int? ExitCode = null);
 
-public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagnosticReader = null)
+public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagnosticReader = null, IAecProviderReader? providerReader = null)
 {
     public const int MaintenanceMinutes = 60;
 
@@ -15,13 +15,30 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
     {
         if (!ValidPassword(password)) return new(AecState.Unknown, "The Anti-Executable password contains unsupported control characters or is too long.");
         var result = await RunAsync(path, ["status"], password, cancellationToken);
+        AecStatusResult commandLine;
         if (diagnosticReader is not null && TransportSucceeded(result) && string.IsNullOrWhiteSpace(result.Output) && string.IsNullOrWhiteSpace(result.StandardError))
         {
             var diagnostic = await diagnosticReader.DiagnoseAsync(path, cancellationToken);
             if (diagnostic == AecDiagnostic.PasswordRejected) diagnostic = AecDiagnostic.PasswordRequired;
-            if (AecDiagnostics.Describe(diagnostic) is { } explanation) return new(AecState.Unknown, explanation, result.ExitCode, diagnostic);
+            commandLine = AecDiagnostics.Describe(diagnostic) is { } explanation
+                ? new(AecState.Unknown, explanation, result.ExitCode, diagnostic)
+                : ParseStatus(result, password.Length > 0);
         }
-        return ParseStatus(result, password.Length > 0);
+        else commandLine = ParseStatus(result, password.Length > 0);
+        return await ReconcileWithProviderAsync(commandLine, cancellationToken);
+    }
+
+    // The provider only ever confirms a state it maps, so a failed or unavailable read must leave
+    // the command-line verdict untouched.
+    private async Task<AecStatusResult> ReconcileWithProviderAsync(AecStatusResult commandLine, CancellationToken cancellationToken)
+    {
+        if (providerReader is null) return commandLine;
+        try
+        {
+            return AecProvider.Reconcile(commandLine, await providerReader.ReadAsync(cancellationToken));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return commandLine; }
     }
 
     public async Task<string?> GetVersionAsync(string path, CancellationToken cancellationToken = default)
@@ -87,6 +104,7 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
                 verified = TransportSucceeded(response) && string.IsNullOrWhiteSpace(response.Output) && string.IsNullOrWhiteSpace(response.StandardError)
                     ? new(AecState.Unknown, "AEC returned no status while the change was being verified.", response.ExitCode)
                     : ParseStatus(response, password.Length > 0);
+                verified = await ReconcileWithProviderAsync(verified, deadline.Token);
                 verificationProgress?.Invoke(checks, verified);
                 if (verified.State == desired)
                     return new(ChangeOutcome.Accepted, action switch

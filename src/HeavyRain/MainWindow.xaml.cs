@@ -35,12 +35,22 @@ public partial class MainWindow : MetroWindow
     {
         InitializeComponent();
         client = new DfcClient(demo ? new DemoRunner() : new CommandProcessRunner());
-        aecClient = new AecClient(demo ? new AecDemoRunner() : new CommandProcessRunner(), demo ? null : new AecDiagnosticProbe());
+        aecClient = new AecClient(demo ? new AecDemoRunner() : new CommandProcessRunner(), demo ? null : new AecDiagnosticProbe(), demo ? null : CreateAecProviderReader());
         MachineNameText.Text = Environment.MachineName;
         DemoBanner.Visibility = demo ? Visibility.Visible : Visibility.Collapsed;
         timer.Tick += async (_, _) => { if (!busy && WindowState != WindowState.Minimized) await RefreshAsync(false); };
         StateChanged += async (_, _) => { if (timer.IsEnabled && WindowState != WindowState.Minimized && !busy) await RefreshAsync(false); };
         Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); PasswordInput.Clear(); AecPasswordInput.Clear(); ActivityProgress.IsIndeterminate = false; ActivityProgress.Visibility = Visibility.Collapsed; };
+    }
+
+    // The Faronics Anti-Executable WMI provider is read through Windows PowerShell's CIM cmdlets,
+    // which are present on every supported Windows build. If PowerShell cannot be located the
+    // reader is omitted and Heavy Rain falls back to the AEC.exe command line alone.
+    private static IAecProviderReader? CreateAecProviderReader()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        var powerShell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+        return File.Exists(powerShell) ? new AecProviderReader(new CommandProcessRunner(TimeSpan.FromSeconds(20)), powerShell) : null;
     }
 
     public async Task InitializeAsync(Action<string>? reportProgress = null)
