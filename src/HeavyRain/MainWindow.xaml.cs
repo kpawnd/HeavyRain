@@ -40,7 +40,7 @@ public partial class MainWindow : MetroWindow
         DemoBanner.Visibility = demo ? Visibility.Visible : Visibility.Collapsed;
         timer.Tick += async (_, _) => { if (!busy && WindowState != WindowState.Minimized) await RefreshAsync(false); };
         StateChanged += async (_, _) => { if (timer.IsEnabled && WindowState != WindowState.Minimized && !busy) await RefreshAsync(false); };
-        Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); PasswordInput.Clear(); AecPasswordInput.Clear(); };
+        Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); PasswordInput.Clear(); AecPasswordInput.Clear(); ActivityProgress.IsIndeterminate = false; ActivityProgress.Visibility = Visibility.Collapsed; };
     }
 
     public async Task InitializeAsync(Action<string>? reportProgress = null)
@@ -64,6 +64,8 @@ public partial class MainWindow : MetroWindow
         Task aecTask = Task.CompletedTask;
         try
         {
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            lifetime.Token.ThrowIfCancellationRequested();
             var inspectMetadata = log || installation is null || DateTimeOffset.UtcNow - metadataCheckedAt >= TimeSpan.FromMinutes(5);
             aecTask = RefreshAecAsync(inspectMetadata, log, reportProgress);
             var previousPolicy = policy;
@@ -138,6 +140,8 @@ public partial class MainWindow : MetroWindow
     private void SetBusy(bool value)
     {
         busy = value;
+        ActivityProgress.IsIndeterminate = value;
+        ActivityProgress.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
         RefreshButton.IsEnabled = BrowseButton.IsEnabled = DetectButton.IsEnabled = ExportButton.IsEnabled = !value;
         PasswordInput.IsEnabled = RestartCheck.IsEnabled = !value;
         AecPasswordInput.IsEnabled = AecBrowseButton.IsEnabled = AecDetectButton.IsEnabled = !value;

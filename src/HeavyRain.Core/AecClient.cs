@@ -18,9 +18,10 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
         if (diagnosticReader is not null && TransportSucceeded(result) && string.IsNullOrWhiteSpace(result.Output) && string.IsNullOrWhiteSpace(result.StandardError))
         {
             var diagnostic = await diagnosticReader.DiagnoseAsync(path, cancellationToken);
+            if (diagnostic == AecDiagnostic.PasswordRejected) diagnostic = AecDiagnostic.PasswordRequired;
             if (AecDiagnostics.Describe(diagnostic) is { } explanation) return new(AecState.Unknown, explanation, result.ExitCode, diagnostic);
         }
-        return ParseStatus(result);
+        return ParseStatus(result, password.Length > 0);
     }
 
     public async Task<string?> GetVersionAsync(string path, CancellationToken cancellationToken = default)
@@ -59,8 +60,9 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
         var result = await RunAsync(path, arguments, password, cancellationToken);
         if (result.TimedOut || result.Error is not null || result.ExitCode is null)
             return new(ChangeOutcome.Uncertain, "The request may have taken effect, but its result could not be read. Check status before retrying.", ExitCode: result.ExitCode);
-        if (result.ExitCode != 0 || Failure(result) is not null)
-            return new(ChangeOutcome.Rejected, Failure(result) ?? $"AEC rejected the request (exit {result.ExitCode}). Check the installed version and Anti-Executable permissions.", ExitCode: result.ExitCode);
+        var failure = Failure(result, password.Length > 0);
+        if (result.ExitCode != 0 || failure is not null)
+            return new(ChangeOutcome.Rejected, failure ?? $"AEC rejected the request (exit {result.ExitCode}). Check the installed version and Anti-Executable permissions.", PasswordFailure(result, password.Length > 0), result.ExitCode);
 
         var verified = await QueryAsync(path, password, cancellationToken);
         if (verified.State != desired)
@@ -73,13 +75,15 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
         }, verified, result.ExitCode);
     }
 
-    public static AecStatusResult ParseStatus(ProcessResult result)
+    public static AecStatusResult ParseStatus(ProcessResult result, bool passwordSupplied = false)
     {
-        if (!TransportSucceeded(result)) return new(AecState.Unknown, result.TimedOut
+        if (result.TimedOut || result.Error is not null || result.ExitCode is null) return new(AecState.Unknown, result.TimedOut
             ? "AEC did not finish within the time limit. Check Anti-Executable before retrying."
             : result.Error is not null ? "AEC could not be run or its response could not be read. Check the executable and administrator access."
             : $"AEC did not return a successful status response (exit {result.ExitCode?.ToString() ?? "unavailable"}).", result.ExitCode);
-        if (Failure(result) is { } failure) return new(AecState.Unknown, failure, result.ExitCode);
+        if (PasswordFailure(result, passwordSupplied) is { } passwordFailure) return passwordFailure;
+        if (Failure(result, passwordSupplied) is { } failure) return new(AecState.Unknown, failure, result.ExitCode);
+        if (result.ExitCode != 0) return new(AecState.Unknown, $"AEC did not return a successful status response (exit {result.ExitCode}).", result.ExitCode);
         var states = new HashSet<AecState>();
         var lines = (result.Output + "\n" + result.StandardError).Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (var line in lines)
@@ -117,8 +121,22 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
     private static bool ValidPassword(string password) => password.Length <= 255 && !password.Any(char.IsControl);
     private static bool TransportSucceeded(ProcessResult result) => !result.TimedOut && result.Error is null && result.ExitCode == 0;
 
-    private static string? Failure(ProcessResult result)
+    private static AecStatusResult? PasswordFailure(ProcessResult result, bool passwordSupplied)
     {
+        var output = result.Output + "\n" + result.StandardError;
+        if (!Regex.IsMatch(output, @"\b(?:Enter\s+(?:AE\s*)?(?:(?:Administrator|Admin|Trusted\s*User)\s+)?Password\s*:|Invalid\s+(?:AE\s*)?(?:(?:Administrator|Admin|Trusted\s*User)\s+)?Password\b|Password\s+(?:is\s+)?(?:incorrect|invalid|not valid)\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return null;
+        var role = Regex.IsMatch(output, @"\b(?:AE\s*)?Trusted\s*User\s+Password\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ? "AE Trusted User password"
+            : Regex.IsMatch(output, @"\b(?:AE\s*)?(?:Administrator|Admin)\s+Password\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ? "AE Administrator password" : "Anti-Executable password";
+        var diagnostic = passwordSupplied ? AecDiagnostic.PasswordRejected : AecDiagnostic.PasswordRequired;
+        var detail = passwordSupplied
+            ? $"AEC did not accept the supplied {role}. Check that password in your policy's User Settings, then enter it again. This is separate from your Windows login and Deep Freeze password."
+            : $"AEC is requesting the {role}. Enter it from your policy's User Settings, then choose Check status. This is separate from your Windows login and Deep Freeze password. Automatic checks do not retain passwords.";
+        return new(AecState.Unknown, detail, result.ExitCode, diagnostic);
+    }
+
+    private static string? Failure(ProcessResult result, bool passwordSupplied = false)
+    {
+        if (PasswordFailure(result, passwordSupplied) is { } passwordFailure) return passwordFailure.Detail;
         var output = result.Output + "\n" + result.StandardError;
         if (Regex.IsMatch(output, @"password|appropriate right|access denied|not authorized|unauthori[sz]ed|permission|administrator", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             return "AEC requires an authorized Anti-Executable account and its AE password when configured. Windows elevation or an AE password alone does not grant account access.";

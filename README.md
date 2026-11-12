@@ -12,6 +12,7 @@ Made by [@kpawnd](https://github.com/kpawnd).
 - Local Cloud policy name and Deep Freeze version information.
 - Diagnostic reports you can save as JSON.
 - A dark purple Metro interface with explanations when an action can't run.
+- Animated dots along the bottom while auto-detection and other checks are running.
 - A six-second startup screen with live installation, policy and status checks.
 - An original synth startup chime, embedded in the EXE.
 
@@ -34,6 +35,8 @@ For Anti-Executable, open **anti-executable**. Heavy Rain looks for `AEC.exe` be
 **Check status** queries AEC with the password you entered. **Enable**, **Disable**, and **Start maintenance** ask for confirmation, check the current state, and verify it again after the command. Maintenance requests one hour. Disabling during Maintenance ends that mode and leaves protection off. Maintenance can add new or changed executables to the allowed list; it isn't just a temporary pause. AEC doesn't report the remaining time.
 
 AEC can reject an unauthorized account silently, returning exit code 0 without any status. When that happens, Heavy Rain runs a separate, read-only `status` diagnostic and recognizes a small set of AEC's internal error messages. **Not authorized** means AEC classified the Windows account as an External User. In a Cloud policy, add the account under **Anti-Executable → User Settings → Trusted Users**, then apply the policy and check again. The AE password is an extra check for authorized accounts; it doesn't grant access on its own.
+
+**Password required** means AEC is asking for its additional password. Enter the AE Administrator or AE Trusted User password named in the message, then choose **Check status**. These passwords are configured in the policy's **User Settings**, separately from Windows and Deep Freeze passwords. **Password rejected** means AEC didn't accept the password supplied with that request. Passwords are cleared after each request, so automatic checks may ask for one again.
 
 Diagnostics are limited to a five-second status query, cached for one minute, and never receive passwords or run protection changes. Raw diagnostic messages aren't retained or exported. If no known reason is available, status stays **Unknown**. Unrecognized or conflicting responses also stay unknown.
 

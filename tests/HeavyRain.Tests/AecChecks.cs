@@ -37,6 +37,52 @@ internal static class AecChecks
             return Task.CompletedTask;
         });
 
+        const string administratorPrompt = "\r\r\nEnter AE Administrator Password : \r\r\nInvalid AE Administrator Password\r\r\n";
+        foreach (var (password, expected) in new[] { ("", AecDiagnostic.PasswordRequired), ("example secret", AecDiagnostic.PasswordRejected) })
+        await check($"AEC distinguishes missing and supplied passwords: {expected}", async () =>
+        {
+            var result = await new AecClient(new FakeRunner(new ProcessResult(0, Output: administratorPrompt))).QueryAsync("AEC.exe", password);
+            Assert(result.Diagnostic == expected && result.State == AecState.Unknown, "Password error was misclassified");
+            Assert(result.Detail.Contains("AE Administrator password") && !result.Detail.Contains("account access"), "Wrong role or generic account error");
+            Assert(!JsonSerializer.Serialize(result).Contains("example secret"), "Secret leaked");
+        });
+
+        foreach (var (output, role) in new[]
+        {
+            ("Invalid AEAdmin Password", "AE Administrator password"),
+            ("Enter AE Trusted User Password :", "AE Trusted User password"),
+            ("Invalid AETrustedUser Password", "AE Trusted User password"),
+            ("Password not valid", "Anti-Executable password")
+        })
+        await check("AEC password errors on stderr retain the requested role", () =>
+        {
+            var result = AecClient.ParseStatus(new(3, StandardError: output), passwordSupplied: true);
+            Assert(result.Diagnostic == AecDiagnostic.PasswordRejected && result.Detail.Contains(role) && result.State == AecState.Unknown, "Password role or nonzero exit lost");
+            return Task.CompletedTask;
+        });
+
+        await check("AEC missing password blocks mutations with a specific explanation", async () =>
+        {
+            var runner = new FakeRunner(new ProcessResult(0, Output: administratorPrompt));
+            var result = await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Disable);
+            Assert(result.Outcome == ChangeOutcome.Rejected && result.Status?.Diagnostic == AecDiagnostic.PasswordRequired && runner.Calls.Count == 1, "Change sent without required password");
+        });
+
+        await check("AEC password rejected during a mutation is reported without retry", async () =>
+        {
+            var runner = new FakeRunner(new(0, Output: "Protected"), new(0, Output: "Invalid AE Administrator Password"));
+            var result = await new AecClient(runner).ChangeAsync("AEC.exe", "example secret", AecAction.Disable);
+            Assert(result.Outcome == ChangeOutcome.Rejected && result.Status?.Diagnostic == AecDiagnostic.PasswordRejected && runner.Calls.Count == 2, "Password rejection lost or request retried");
+            Assert(!JsonSerializer.Serialize(result).Contains("example secret"), "Password leaked");
+        });
+
+        await check("AEC transport failure takes precedence over partial password output", () =>
+        {
+            var result = AecClient.ParseStatus(new(null, TimedOut: true, Output: administratorPrompt));
+            Assert(result.State == AecState.Unknown && result.Diagnostic == AecDiagnostic.None, "Partial failed query supplied an authentication verdict");
+            return Task.CompletedTask;
+        });
+
         foreach (var (initial, action, expected, arguments) in new (string, AecAction, string, string[])[]
         {
             ("Unprotected", AecAction.Enable, "Protected", ["protect", "on"]),

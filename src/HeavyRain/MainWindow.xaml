@@ -8,6 +8,7 @@
         Width="960" Height="740" MinWidth="820" MinHeight="640" WindowStartupLocation="CenterScreen"
         WindowTransitionsEnabled="False" Background="{StaticResource CanvasBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True">
+    <Grid Background="{StaticResource CanvasBrush}">
     <Grid Margin="30,12,30,16" Background="{StaticResource CanvasBrush}">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <Grid Margin="0,0,0,20">
@@ -123,9 +124,9 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="32"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
                                 <StackPanel>
                                     <TextBlock Text="Protection" Style="{StaticResource SectionTitle}"/>
-                                    <TextBlock Text="Anti-Executable password · optional" Style="{StaticResource Label}"/>
+                                    <TextBlock Text="Anti-Executable password" Style="{StaticResource Label}"/>
                                     <PasswordBox x:Name="AecPasswordInput" MaxLength="255" FontSize="16" AutomationProperties.Name="Anti-Executable password"/>
-                                    <TextBlock Text="Your Windows account must be authorized in Anti-Executable. Enter its additional AE password if configured. Never saved." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
+                                    <TextBlock Text="Use the AE password from your policy's User Settings if required. Cleared after each request; never saved." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
                                     <WrapPanel Margin="0,0,0,12">
                                         <Button x:Name="AecEnableButton" Content="Enable" Style="{StaticResource PrimaryButton}" Click="AecEnable_Click" Margin="0,0,10,8"/>
                                         <Button x:Name="AecDisableButton" Content="Disable" Click="AecDisable_Click" Margin="0,0,10,8"/>
@@ -196,5 +197,10 @@
                 </StackPanel>
             </Button>
         </Grid>
+    </Grid>
+        <metro:MetroProgressBar x:Name="ActivityProgress" VerticalAlignment="Bottom" Height="4"
+                                IsIndeterminate="False" Visibility="Collapsed" IsHitTestVisible="False"
+                                Foreground="{StaticResource AccentBrush}" Background="{StaticResource AccentSurfaceBrush}"
+                                AutomationProperties.Name="Operation in progress"/>
     </Grid>
 </metro:MetroWindow>

@@ -60,6 +60,13 @@ internal static class AecDiagnosticChecks
             Assert(result.Outcome == ChangeOutcome.Rejected && runner.Calls.Count == 1 && result.Detail.Contains("account authorization"), "Authorization requirement was bypassed");
         });
 
+        await check("Password-free diagnostics cannot reject a supplied password", async () =>
+        {
+            var client = new AecClient(new FakeRunner(new ProcessResult(0)), new DiagnosticReader(AecDiagnostic.PasswordRejected));
+            var result = await client.QueryAsync("AEC.exe", "example-secret");
+            Assert(result.Diagnostic == AecDiagnostic.PasswordRequired && !result.Detail.Contains("supplied"), "Password-free probe judged an unseen password");
+        });
+
         foreach (var result in new[] { new ProcessResult(0, Output: "Protected"), new ProcessResult(0, StandardError: "denied"), new ProcessResult(0, TimedOut: true), new ProcessResult(4), new ProcessResult(null, Error: "blocked") })
         await check("AEC diagnostics are reserved for successful empty status responses", async () =>
         {

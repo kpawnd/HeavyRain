@@ -1,6 +1,6 @@
 namespace HeavyRain.Core;
 
-public enum AecDiagnostic { None, ExternalUser, UnsupportedEdition, ConfigurationUnavailable, PasswordRejected }
+public enum AecDiagnostic { None, ExternalUser, UnsupportedEdition, ConfigurationUnavailable, PasswordRejected, PasswordRequired }
 
 public interface IAecDiagnosticReader
 {
@@ -23,7 +23,8 @@ public static class AecDiagnostics
         AecDiagnostic.ExternalUser => "AEC rejected this Windows account as an External User. Authorize the account in Anti-Executable User Settings first. For Cloud, add it under the assigned policy's Trusted Users and apply the policy. An AE password does not replace account authorization.",
         AecDiagnostic.UnsupportedEdition => "AEC reports that this installation does not support its Enterprise command-line interface. Manage protection through the installed Anti-Executable application or Cloud console.",
         AecDiagnostic.ConfigurationUnavailable => "AEC could not initialize its Anti-Executable configuration. Check the installation and its configuration in the Faronics application.",
-        AecDiagnostic.PasswordRejected => "AEC rejected authorization for this status check. The Windows account must be authorized in Anti-Executable, with its additional AE password if configured.",
+        AecDiagnostic.PasswordRequired => "AEC requires an Anti-Executable password. Enter the AE password configured in your policy's User Settings, then choose Check status. Automatic checks do not retain passwords.",
+        AecDiagnostic.PasswordRejected => "AEC did not accept the supplied Anti-Executable password. Enter the correct AE password configured in your policy's User Settings and try again.",
         _ => null
     };
 }

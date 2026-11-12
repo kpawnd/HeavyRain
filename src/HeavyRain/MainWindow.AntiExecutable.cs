@@ -59,7 +59,13 @@ public partial class MainWindow
         aecStatus = result;
         aecCheckedAt = DateTimeOffset.Now;
         if (result.State != AecState.Unknown) aecUncertain = false;
-        AecStateText.Text = result.Diagnostic == AecDiagnostic.ExternalUser ? "Not authorized" : result.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", AecState.Maintenance => "Maintenance", _ => "Unknown" };
+        AecStateText.Text = result.Diagnostic switch
+        {
+            AecDiagnostic.ExternalUser => "Not authorized",
+            AecDiagnostic.PasswordRequired => "Password required",
+            AecDiagnostic.PasswordRejected => "Password rejected",
+            _ => result.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", AecState.Maintenance => "Maintenance", _ => "Unknown" }
+        };
         AecStateText.Foreground = AecStateStripe.Background = (Brush)FindResource(result.State == AecState.Unknown ? "MutedBrush" : "AccentBrush");
         AecDetailText.Text = result.Detail;
         AecCheckedText.Text = $"Checked {aecCheckedAt:HH:mm:ss} · {(demo ? "Simulated" : aecInstallation?.Path is not null ? "AEC status" : "No AEC interface")}";
@@ -90,7 +96,19 @@ public partial class MainWindow
             lifetime.Token.ThrowIfCancellationRequested();
             ApplyAecStatus(result);
             Log($"Anti-Executable status: {AecStateText.Text}. {result.Detail}");
-            if (result.State == AecState.Unknown) new ActionNoticeWindow(new(result.Diagnostic == AecDiagnostic.ExternalUser ? "Authorize your Windows account" : "Anti-Executable status is unavailable", result.Detail)) { Owner = this }.ShowDialog();
+            if (result.State == AecState.Unknown)
+            {
+                var title = result.Diagnostic switch
+                {
+                    AecDiagnostic.ExternalUser => "Authorize your Windows account",
+                    AecDiagnostic.PasswordRequired => "Enter your Anti-Executable password",
+                    AecDiagnostic.PasswordRejected => "Anti-Executable password was rejected",
+                    _ => "Anti-Executable status is unavailable"
+                };
+                new ActionNoticeWindow(new(title, result.Detail)) { Owner = this }.ShowDialog();
+                if (result.Diagnostic is AecDiagnostic.PasswordRequired or AecDiagnostic.PasswordRejected && !lifetime.IsCancellationRequested)
+                    _ = Dispatcher.BeginInvoke(() => AecPasswordInput.Focus());
+            }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
