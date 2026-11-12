@@ -125,7 +125,7 @@
                                     <TextBlock Text="Protection" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="Anti-Executable password · optional" Style="{StaticResource Label}"/>
                                     <PasswordBox x:Name="AecPasswordInput" MaxLength="255" FontSize="16" AutomationProperties.Name="Anti-Executable password"/>
-                                    <TextBlock Text="Leave blank if your Windows account has AE administrator rights. Never saved; cleared after each request." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
+                                    <TextBlock Text="Your Windows account must be authorized in Anti-Executable. Enter its additional AE password if configured. Never saved." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
                                     <WrapPanel Margin="0,0,0,12">
                                         <Button x:Name="AecEnableButton" Content="Enable" Style="{StaticResource PrimaryButton}" Click="AecEnable_Click" Margin="0,0,10,8"/>
                                         <Button x:Name="AecDisableButton" Content="Disable" Click="AecDisable_Click" Margin="0,0,10,8"/>

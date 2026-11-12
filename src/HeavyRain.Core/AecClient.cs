@@ -5,15 +5,20 @@ namespace HeavyRain.Core;
 
 public enum AecState { Unknown, Enabled, Disabled, Maintenance }
 public enum AecAction { Enable, Disable, Maintenance }
-public sealed record AecStatusResult(AecState State, string Detail, int? ExitCode = null);
+public sealed record AecStatusResult(AecState State, string Detail, int? ExitCode = null, AecDiagnostic Diagnostic = AecDiagnostic.None);
 public sealed record AecChangeResult(ChangeOutcome Outcome, string Detail, AecStatusResult? Status = null, int? ExitCode = null);
 
-public sealed class AecClient(ICommandRunner runner)
+public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagnosticReader = null)
 {
     public async Task<AecStatusResult> QueryAsync(string path, string password = "", CancellationToken cancellationToken = default)
     {
         if (!ValidPassword(password)) return new(AecState.Unknown, "The Anti-Executable password contains unsupported control characters or is too long.");
         var result = await RunAsync(path, ["status"], password, cancellationToken);
+        if (diagnosticReader is not null && TransportSucceeded(result) && string.IsNullOrWhiteSpace(result.Output) && string.IsNullOrWhiteSpace(result.StandardError))
+        {
+            var diagnostic = await diagnosticReader.DiagnoseAsync(path, cancellationToken);
+            if (AecDiagnostics.Describe(diagnostic) is { } explanation) return new(AecState.Unknown, explanation, result.ExitCode, diagnostic);
+        }
         return ParseStatus(result);
     }
 
@@ -92,7 +97,7 @@ public sealed class AecClient(ICommandRunner runner)
             else if (line.Length > 0) return new(AecState.Unknown, "AEC returned an unrecognized status format. Check status in Anti-Executable; no protection state was inferred.", result.ExitCode);
         }
         if (states.Count != 1) return new(AecState.Unknown, lines.Length == 0
-            ? "AEC returned no readable status. Check Anti-Executable permissions, or enter its password and choose Check status."
+            ? "AEC returned no readable status. Your Windows account must be authorized in Anti-Executable User Settings. An AE password is an additional requirement when configured; it does not replace account authorization."
             : "AEC returned conflicting states. Check status in Anti-Executable before making changes.", result.ExitCode);
         var known = states.Single();
         return new(known, known switch
@@ -117,7 +122,7 @@ public sealed class AecClient(ICommandRunner runner)
     {
         var output = result.Output + "\n" + result.StandardError;
         if (Regex.IsMatch(output, @"password|appropriate right|access denied|not authorized|unauthori[sz]ed|permission|administrator", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-            return "AEC requires an authorized Anti-Executable administrator or a valid Anti-Executable password. Windows elevation alone may not grant access.";
+            return "AEC requires an authorized Anti-Executable account and its AE password when configured. Windows elevation or an AE password alone does not grant account access.";
         if (Regex.IsMatch(output, @"\b(failed|failure|unable|error|cannot|invalid|usage)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             return "AEC could not complete the command. Check Anti-Executable permissions, Cloud policy, and Deep Freeze maintenance compatibility.";
         return null;

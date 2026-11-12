@@ -29,11 +29,13 @@ Save your work first. Restarting a frozen computer can discard changes on protec
 
 You need Deep Freeze and a compatible `DFC.exe` installed. The Cloud agent alone isn't enough. A Windows password or Deep Freeze one-time password won't work for these commands.
 
-For Anti-Executable, open **anti-executable**. Heavy Rain looks for `AEC.exe` beside the registered AE service and in Faronics installation folders. You can also select it under **installation**. Leave the password blank if your Windows account has AE administrator rights, or enter your Anti-Executable password. This is separate from the Deep Freeze password.
+For Anti-Executable, open **anti-executable**. Heavy Rain looks for `AEC.exe` beside the registered AE service and in Faronics installation folders. You can also select it under **installation**. Your Windows account must be authorized in Anti-Executable. Enter the additional Anti-Executable password if one is configured; it is separate from the Deep Freeze password.
 
 **Check status** queries AEC with the password you entered. **Enable**, **Disable**, and **Start maintenance** ask for confirmation, check the current state, and verify it again after the command. Disabling during Maintenance ends that mode and leaves protection off. Maintenance can add new or changed executables to the allowed list; it isn't just a temporary pause. Its duration is sent to AEC, but the remaining time isn't reported.
 
-If AEC returns no status, Heavy Rain shows **Unknown** and doesn't send a protection change. A Windows administrator account may still need permission in Anti-Executable. Unrecognized or conflicting responses also stay unknown.
+AEC can reject an unauthorized account silently, returning exit code 0 without any status. When that happens, Heavy Rain runs a separate, read-only `status` diagnostic and recognizes a small set of AEC's internal error messages. **Not authorized** means AEC classified the Windows account as an External User. In a Cloud policy, add the account under **Anti-Executable → User Settings → Trusted Users**, then apply the policy and check again. The AE password is an extra check for authorized accounts; it doesn't grant access on its own.
+
+Diagnostics are limited to a five-second status query, cached for one minute, and never receive passwords or run protection changes. Raw diagnostic messages aren't retained or exported. If no known reason is available, status stays **Unknown**. Unrecognized or conflicting responses also stay unknown.
 
 ## Building
 
@@ -68,7 +70,7 @@ Protection and policy refresh every 30 seconds. Installation discovery and versi
 
 Passwords aren't saved or included in reports. The vendor tools receive passwords as process arguments, so administrator tools or Windows command-line auditing may capture them. Automatic status checks use the Windows account without retaining your password.
 
-The AEC location, version, and command syntax were checked on a Cloud-managed VM with Anti-Executable 6.11.2112.730. That installation returned empty status and version responses through the remote session. Live protection changes haven't been tested; command sequencing and failure handling are covered by simulated tests. Deep Freeze integration also needs validation against the installed agent.
+The AEC location, version, and command syntax were checked on a Cloud-managed VM with Anti-Executable 6.11.2112.730. Heavy Rain's read-only client was also run inside that VM and identified its silent rejection as an unauthorized Windows account. Live protection changes haven't been tested; command sequencing and failure handling are covered by simulated tests. Deep Freeze integration also needs validation against the installed agent.
 
 Heavy Rain is an independent project. Faronics binaries aren't included. See the [DFC documentation](https://docs.faronics.com/deep-freeze-cloud/using-deep-freeze-cloud-console/deep-freeze-service/advanced-settings-tab/deep-freeze-command-line-syntax), [AEC documentation](https://support.faronics.com/help/en-ca/46-anti-executable/216-what-is-the-command-line-syntax-for-faronics-anti-executable-enterprise), and [third-party notices](THIRD-PARTY-NOTICES.txt).
 

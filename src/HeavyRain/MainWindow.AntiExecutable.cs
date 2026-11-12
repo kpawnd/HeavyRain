@@ -36,14 +36,14 @@ public partial class MainWindow
                 AecVersionSourceText.Text = demo ? "Sample version" : aecVersion is not null ? "Reported by AEC" : aecInstallation.Path is not null ? "AEC file version · version command unavailable" : "No AEC interface";
                 progress?.Invoke($"Anti-Executable version: {AecVersionText.Text} ({AecVersionSourceText.Text}).");
             }
-            var previous = aecStatus.State;
+            var previous = aecStatus;
             progress?.Invoke(demo ? "Loading the sample Anti-Executable state…" : aecInstallation.Path is not null ? "Running AEC.exe status…" : "Skipping Anti-Executable status: AEC.exe is unavailable.");
             var result = aecInstallation.Path is { } executable ? await aecClient.QueryAsync(executable, cancellationToken: lifetime.Token)
                 : new(AecState.Unknown, "The Anti-Executable control interface is unavailable. Open installation to locate AEC.exe.");
             lifetime.Token.ThrowIfCancellationRequested();
             ApplyAecStatus(result);
             progress?.Invoke($"Anti-Executable: {AecStateText.Text}. {result.Detail}");
-            if (log || previous != result.State) Log($"Anti-Executable: {AecStateText.Text}. {result.Detail}");
+            if (log || previous != result) Log($"Anti-Executable: {AecStateText.Text}. {result.Detail}");
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -59,7 +59,7 @@ public partial class MainWindow
         aecStatus = result;
         aecCheckedAt = DateTimeOffset.Now;
         if (result.State != AecState.Unknown) aecUncertain = false;
-        AecStateText.Text = result.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", AecState.Maintenance => "Maintenance", _ => "Unknown" };
+        AecStateText.Text = result.Diagnostic == AecDiagnostic.ExternalUser ? "Not authorized" : result.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", AecState.Maintenance => "Maintenance", _ => "Unknown" };
         AecStateText.Foreground = AecStateStripe.Background = (Brush)FindResource(result.State == AecState.Unknown ? "MutedBrush" : "AccentBrush");
         AecDetailText.Text = result.Detail;
         AecCheckedText.Text = $"Checked {aecCheckedAt:HH:mm:ss} · {(demo ? "Simulated" : aecInstallation?.Path is not null ? "AEC status" : "No AEC interface")}";
@@ -90,7 +90,7 @@ public partial class MainWindow
             lifetime.Token.ThrowIfCancellationRequested();
             ApplyAecStatus(result);
             Log($"Anti-Executable status: {AecStateText.Text}. {result.Detail}");
-            if (result.State == AecState.Unknown) new ActionNoticeWindow(new("Anti-Executable status is unavailable", result.Detail)) { Owner = this }.ShowDialog();
+            if (result.State == AecState.Unknown) new ActionNoticeWindow(new(result.Diagnostic == AecDiagnostic.ExternalUser ? "Authorize your Windows account" : "Anti-Executable status is unavailable", result.Detail)) { Owner = this }.ShowDialog();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)

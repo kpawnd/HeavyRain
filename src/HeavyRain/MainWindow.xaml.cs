@@ -35,7 +35,7 @@ public partial class MainWindow : MetroWindow
     {
         InitializeComponent();
         client = new DfcClient(demo ? new DemoRunner() : new CommandProcessRunner());
-        aecClient = new AecClient(demo ? new AecDemoRunner() : new CommandProcessRunner());
+        aecClient = new AecClient(demo ? new AecDemoRunner() : new CommandProcessRunner(), demo ? null : new AecDiagnosticProbe());
         MachineNameText.Text = Environment.MachineName;
         DemoBanner.Visibility = demo ? Visibility.Visible : Visibility.Collapsed;
         timer.Tick += async (_, _) => { if (!busy && WindowState != WindowState.Minimized) await RefreshAsync(false); };
@@ -241,7 +241,7 @@ public partial class MainWindow : MetroWindow
             schemaVersion = 2, demo, computer = Environment.MachineName, os = Environment.OSVersion.VersionString,
             administrator = admin, checkedAt, state = status.State.ToString(), status.Detail, status.ExitCode,
             deepFreezeVersion, installation, policy, sessionBootRequest = PendingText.Text,
-            antiExecutable = new { state = aecStatus.State.ToString(), aecStatus.Detail, aecStatus.ExitCode, checkedAt = aecCheckedAt, version = aecVersion, installation = aecInstallation, uncertain = aecUncertain, sessionRequest = AecPendingText.Text },
+            antiExecutable = new { state = aecStatus.State.ToString(), aecStatus.Detail, aecStatus.ExitCode, diagnostic = aecStatus.Diagnostic.ToString(), checkedAt = aecCheckedAt, version = aecVersion, installation = aecInstallation, uncertain = aecUncertain, sessionRequest = AecPendingText.Text },
             note = "Registry evidence does not establish protection state. Next-boot settings are not queried. Passwords and raw command output are excluded.",
             activity = activity.ToArray()
         };

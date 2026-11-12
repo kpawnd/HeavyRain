@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Text.Json;
 using HeavyRain.Core;
 
+if (args.SequenceEqual(new[] { "status" })) return await AecDiagnosticChecks.RunFixtureAsync();
+
 if (args.FirstOrDefault() == "--fixture")
 {
     switch (args[1])
@@ -330,6 +332,7 @@ await Check("Missing cache is never created and cancellation stops reads", () =>
 });
 
 await AecChecks.RunAsync(Check);
+await AecDiagnosticChecks.RunAsync(Check);
 await Check("Control transport closes stdin and preserves bounded stderr", async () =>
 {
     var input = await new CommandProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "stdin"]);
