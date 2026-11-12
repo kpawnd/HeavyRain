@@ -37,6 +37,7 @@ public static class InstallationProbe
                 if (uninstall is not null)
                 foreach (var name in uninstall.GetSubKeyNames())
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     using var entry = uninstall.OpenSubKey(name);
                     var displayName = entry?.GetValue("DisplayName") as string;
                     if (displayName is null || !(displayName.Contains("Faronics", StringComparison.OrdinalIgnoreCase) ||
@@ -63,6 +64,7 @@ public static class InstallationProbe
             if (services is not null)
             foreach (var name in services.GetSubKeyNames())
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 using var service = services.OpenSubKey(name);
                 var display = service?.GetValue("DisplayName") as string ?? "";
                 if (name.Equals("DFServ", StringComparison.OrdinalIgnoreCase) || name.Equals("DeepFrz", StringComparison.OrdinalIgnoreCase) ||

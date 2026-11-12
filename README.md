@@ -11,13 +11,13 @@ Made by [@kpawnd](https://github.com/kpawnd).
 - Local Cloud policy name and Deep Freeze version information.
 - Diagnostic reports you can save as JSON.
 - A dark purple Metro interface with explanations when an action can't run.
-- A 6.5-second startup screen with live installation, policy and status checks.
+- A six-second startup screen with live installation, policy and status checks.
 
 ## Using it
 
-Copy `HeavyRain.exe` wherever you want to run it. The portable build includes its DLLs and the .NET runtime; there is nothing else to install for Heavy Rain itself.
+Copy `HeavyRain.exe` wherever you want to run it. The portable build compresses its bundled DLLs and .NET runtime; there is nothing else to install for Heavy Rain itself.
 
-Launch it and approve the Windows administrator prompt. After the credit fades out, the startup log shows which libraries are loaded and the results of the local checks. Heavy Rain looks for `DFC.exe` automatically. If it can't find it, use **Locate DFC.exe** to select the copy supplied with your Deep Freeze installation.
+Launch it and approve the Windows administrator prompt. Checks start during the credit animation, then the log shows the loaded libraries, searched locations and query results. Heavy Rain looks for `DFC.exe` automatically. If it can't find it, open **installation** and use **Locate DFC.exe** to select the copy supplied with your Deep Freeze installation.
 
 Enter a Deep Freeze password with command-line rights, then choose **Freeze PC** or **Thaw PC**. By default, the change applies on the next restart. Tick **Restart immediately after confirmation** if you want to restart now.
 
@@ -42,18 +42,24 @@ dotnet publish src/HeavyRain/HeavyRain.csproj -c Release -o publish
 
 Use `publish/HeavyRain.exe` for distribution. The normal `bin` build folder contains separate DLLs; the published EXE bundles them. Native libraries unpack into the .NET temporary cache when needed.
 
+Compression reduces the download size but adds some startup work and memory use. For an uncompressed single EXE with the same dependencies, add `-p:EnableCompressionInSingleFile=false` to the publish command.
+
 Run `HeavyRain.exe --demo` for a preview with sample data. Demo mode still asks for administrator privileges, but doesn't send commands to Deep Freeze.
 
 ## A few things to know
 
 The next-boot panel records requests made during the current session. It doesn't read back Deep Freeze's scheduled boot mode. Check the reported protection state after restarting.
 
-Policy detection searches Faronics registry keys in both 32-bit and 64-bit views, then falls back to the local Cloud window if it can't find an unambiguous name. Hover over the policy name to see its source. Local metadata can be out of date, and local changes may need to be reconciled with your Cloud policy.
+Policy detection first reads the Cloud agent's registered storage path and its cached current policy in `Tasks.dat`. It uses the root policy name, not a product-specific name or queued task. This location was verified on a Cloud-managed Windows VM. Faronics registry fields and the local Cloud window are fallbacks. Hover over the policy name to see its source. The Cloud console may have newer settings than the local cache.
 
-If the policy stays unavailable, use **Export diagnostics**. The report includes the registry paths checked, policy field names and types, recognized name candidates, and any scan errors or limits. Unrecognized fields are listed without their contents; passwords, tokens and policy IDs aren't read as policy names. Detection is read-only and doesn't modify the registry.
+If the policy stays unavailable, open **activity** and use **Export diagnostics**. The report includes checked locations, recognized names and read errors. It doesn't include the raw cached policy, passwords or tokens. Detection opens the database and registry read-only.
+
+Protection and policy refresh every 30 seconds. Installation discovery and version queries run every five minutes, or when you click **Refresh**. Automatic polling pauses while minimized and resumes when restored.
 
 Passwords aren't saved or included in reports. DFC receives the password as a process argument, so administrator tools or Windows command-line auditing may capture it.
 
 Deep Freeze integration still needs testing against the installed agent. The included tests use simulated responses and don't change a computer's protection.
 
 Heavy Rain is an independent project. Faronics binaries aren't included. See the [DFC documentation](https://docs.faronics.com/deep-freeze-cloud/using-deep-freeze-cloud-console/deep-freeze-service/advanced-settings-tab/deep-freeze-command-line-syntax) and [third-party notices](THIRD-PARTY-NOTICES.txt).
+
+The purple dragon is a recoloring of the older [LLVM dragon](https://llvm.org/Logo.html), owned by Apple. Heavy Rain isn't affiliated with LLVM or Apple.

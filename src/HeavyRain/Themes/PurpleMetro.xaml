@@ -7,22 +7,22 @@
         <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Themes/Dark.Purple.xaml"/>
     </ResourceDictionary.MergedDictionaries>
 
-    <SolidColorBrush x:Key="CanvasBrush" Color="#16141D"/>
-    <SolidColorBrush x:Key="RailBrush" Color="#100E16"/>
-    <SolidColorBrush x:Key="PanelBrush" Color="#211E2A"/>
-    <SolidColorBrush x:Key="InsetBrush" Color="#191620"/>
-    <SolidColorBrush x:Key="LineBrush" Color="#383141"/>
-    <SolidColorBrush x:Key="TextBrush" Color="#F3EFFA"/>
-    <SolidColorBrush x:Key="MutedBrush" Color="#B6ADC6"/>
-    <SolidColorBrush x:Key="AccentBrush" Color="#B69AFF"/>
-    <SolidColorBrush x:Key="AccentStrongBrush" Color="#7844D5"/>
-    <SolidColorBrush x:Key="AccentSurfaceBrush" Color="#30233F"/>
+    <SolidColorBrush x:Key="CanvasBrush" Color="#181818"/>
+    <SolidColorBrush x:Key="RailBrush" Color="#181818"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="#232323"/>
+    <SolidColorBrush x:Key="InsetBrush" Color="#202020"/>
+    <SolidColorBrush x:Key="LineBrush" Color="#424242"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#F1F1F1"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#A6A6A6"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#B79AE5"/>
+    <SolidColorBrush x:Key="AccentStrongBrush" Color="#7949BA"/>
+    <SolidColorBrush x:Key="AccentSurfaceBrush" Color="#28212F"/>
 
-    <SolidColorBrush x:Key="MahApps.Brushes.Accent" Color="#A685F5"/>
-    <SolidColorBrush x:Key="MahApps.Brushes.Highlight" Color="#B69AFF"/>
-    <SolidColorBrush x:Key="MahApps.Brushes.ThemeBackground" Color="#16141D"/>
-    <SolidColorBrush x:Key="MahApps.Brushes.ThemeForeground" Color="#F3EFFA"/>
-    <SolidColorBrush x:Key="MahApps.Brushes.Control.Disabled" Color="#211E2A"/>
+    <SolidColorBrush x:Key="MahApps.Brushes.Accent" Color="#A87FE0"/>
+    <SolidColorBrush x:Key="MahApps.Brushes.Highlight" Color="#B79AE5"/>
+    <SolidColorBrush x:Key="MahApps.Brushes.ThemeBackground" Color="#181818"/>
+    <SolidColorBrush x:Key="MahApps.Brushes.ThemeForeground" Color="#F1F1F1"/>
+    <SolidColorBrush x:Key="MahApps.Brushes.Control.Disabled" Color="#232323"/>
 
     <Style TargetType="TextBlock">
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>

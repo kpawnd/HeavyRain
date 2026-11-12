@@ -28,6 +28,15 @@ public partial class SplashWindow : MetroWindow
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
         var token = linked.Token;
         elapsed.Restart();
+        await Task.WhenAll(initialize().WaitAsync(token), RevealLogsAsync(token));
+        token.ThrowIfCancellationRequested();
+        LoadingText.Text = "Checks complete.";
+        var remaining = TimeSpan.FromMilliseconds(6000) - elapsed.Elapsed;
+        if (remaining > TimeSpan.Zero) await Task.Delay(remaining, token);
+    }
+
+    private async Task RevealLogsAsync(CancellationToken token)
+    {
         await Task.Delay(1600, token);
         if (SystemParameters.ClientAreaAnimation)
         {
@@ -44,19 +53,12 @@ public partial class SplashWindow : MetroWindow
         LogPanel.Opacity = 1;
         if (SystemParameters.ClientAreaAnimation)
             LogPanel.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(250)));
-        token.ThrowIfCancellationRequested();
-        await initialize().WaitAsync(token);
-        token.ThrowIfCancellationRequested();
-        LoadingText.Text = "Startup checks finished · opening your dashboard…";
-        var remaining = TimeSpan.FromMilliseconds(6500) - elapsed.Elapsed;
-        if (remaining > TimeSpan.Zero) await Task.Delay(remaining, token);
     }
 
     public void ReportProgress(string message)
     {
         var entry = new StartupEntry($"{elapsed.Elapsed.TotalSeconds:00.0}s", message);
-        if (Dispatcher.CheckAccess()) Append(entry);
-        else if (!Dispatcher.HasShutdownStarted) _ = Dispatcher.InvokeAsync(() => Append(entry));
+        if (!Dispatcher.HasShutdownStarted) _ = Dispatcher.InvokeAsync(() => Append(entry));
     }
 
     private void Append(StartupEntry entry)

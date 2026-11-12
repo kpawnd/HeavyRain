@@ -16,7 +16,7 @@ public sealed record PolicyRegistryScan(PolicyRegistryKey[] Keys, PolicyRegistry
         if (!Complete)
             result = CloudPolicyInfo.Unavailable("The registry search was incomplete. Export a diagnostic report for the locations checked and any access errors.");
         else if (Candidates.Length == 0)
-            result = CloudPolicyInfo.Unavailable("No recognized policy name was found. Export a diagnostic report to see the registry keys and policy fields checked.");
+            result = CloudPolicyInfo.Unavailable("No local policy name found. See activity for diagnostics.");
         else
         {
             var priority = Candidates.Min(candidate => candidate.Priority);

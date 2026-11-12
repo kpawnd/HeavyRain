@@ -252,6 +252,82 @@ await Check("Unavailable policy diagnostics keep checked keys and unknown field 
     return Task.CompletedTask;
 });
 
+foreach (var (xml, expected) in new (string, string?)[]
+{
+    ("<Policy Name='DEPLOYMENT'><Product><Policy Name='Wrong'/></Product></Policy>", "DEPLOYMENT"),
+    ("<Policy Name=' Office 雪 &amp; Lab '/>", "Office 雪 & Lab"),
+    ("<Policy><Product><PolicyName>Wrong</PolicyName></Product></Policy>", null),
+    ("<History><Policy Name='Old'/></History>", null),
+    ("<Policy Name='A'/><Policy Name='B'/>", null),
+    ("<Policy Name='A'><Product></Policy>", null),
+    ("<Policy Name='A' Name='B'/>", null),
+    ("<!DOCTYPE Policy [<!ENTITY name SYSTEM 'file:///C:/Windows/win.ini'>]><Policy Name='&name;'/>", null),
+    ("<Policy xmlns='unknown' Name='Wrong'/>", null),
+    ("<Policy Name='line&#10;break'/>", null),
+    ("<Policy Name='" + new string('x', 257) + "'/>", null),
+    ("<Policy Name='{df17e344-f4e2-4d0e-bb46-df228311541a}'/>", null),
+    ("<Policy Name='A'>" + new string('x', CloudPolicyCache.MaximumXmlLength) + "</Policy>", null)
+})
+await Check("Cache XML accepts only a valid root policy name", () =>
+{
+    Assert(CloudPolicyCache.ParseName(xml) == expected, "Invalid or unrelated policy selected");
+    return Task.CompletedTask;
+});
+
+await Check("Real SQLite cache reads only the current policy and leaves database unchanged", () =>
+{
+    using var fixture = new PolicyCacheFixture(("CURRENT_PRODUCTS_POLICY", "<Policy Name='Office 雪'><Product Password='never-export-this'/></Policy>"), ("OLD_POLICY", "<Policy Name='Wrong'/>"), ("Token", "never-export-this"));
+    static byte[] HashCache(string path) { using var file = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); return System.Security.Cryptography.SHA256.HashData(file); }
+    var before = HashCache(fixture.Path);
+    var result = CloudPolicyCache.Read(fixture.Path);
+    Assert(result.Name == "Office 雪", "Current policy not read");
+    Assert(!JsonSerializer.Serialize(result).Contains("never-export-this"), "Raw configuration leaked");
+    Assert(before.SequenceEqual(HashCache(fixture.Path)), "Database was modified");
+    return Task.CompletedTask;
+});
+
+await Check("Duplicate current policy rows remain ambiguous", () =>
+{
+    using var fixture = new PolicyCacheFixture(("CURRENT_PRODUCTS_POLICY", "<Policy Name='A'/>"), ("CURRENT_PRODUCTS_POLICY", "<Policy Name='B'/>"));
+    Assert(CloudPolicyCache.Read(fixture.Path).Name is null, "Duplicate rows silently selected");
+    return Task.CompletedTask;
+});
+
+foreach (var value in new string?[] { null, "not XML", "<Policy Name='A'>" + new string('x', CloudPolicyCache.MaximumXmlLength) + "</Policy>" })
+await Check("Null, corrupt and oversized cached policies stay unavailable", () =>
+{
+    using var fixture = new PolicyCacheFixture(("CURRENT_PRODUCTS_POLICY", value));
+    Assert(CloudPolicyCache.Read(fixture.Path).Name is null, "Invalid cache reported a name");
+    return Task.CompletedTask;
+});
+
+await Check("Historical cache keys never supply the current policy", () =>
+{
+    using var fixture = new PolicyCacheFixture(("PREVIOUS_PRODUCTS_POLICY", "<Policy Name='Wrong'/>"));
+    Assert(CloudPolicyCache.Read(fixture.Path).Name is null, "Historical policy selected");
+    return Task.CompletedTask;
+});
+
+await Check("Locked cache queries return promptly", () =>
+{
+    using var fixture = new PolicyCacheFixture(("CURRENT_PRODUCTS_POLICY", "<Policy Name='A'/>"));
+    fixture.Execute("BEGIN EXCLUSIVE");
+    var clock = Stopwatch.StartNew();
+    Assert(CloudPolicyCache.Read(fixture.Path).Name is null && clock.Elapsed < TimeSpan.FromSeconds(2), "Locked cache blocked or reported success");
+    fixture.Execute("ROLLBACK");
+    return Task.CompletedTask;
+});
+
+await Check("Missing cache is never created and cancellation stops reads", () =>
+{
+    var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".dat");
+    Assert(CloudPolicyCache.Read(path).Name is null && !File.Exists(path), "Missing database created");
+    using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+    try { CloudPolicyCache.Read(path, cancelled.Token); throw new Exception("Cancelled query ran"); }
+    catch (OperationCanceledException) { }
+    return Task.CompletedTask;
+});
+
 Console.WriteLine($"\n{passed} passed, {failed} failed.");
 return failed == 0 ? 0 : 1;
 

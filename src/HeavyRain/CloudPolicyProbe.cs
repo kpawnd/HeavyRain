@@ -10,13 +10,16 @@ public static class CloudPolicyProbe
 {
     public static CloudPolicyInfo Inspect(Action<string>? reportProgress = null, CancellationToken cancellationToken = default)
     {
+        reportProgress?.Invoke("Locating the Cloud agent's policy cache…");
+        var cached = CloudPolicyCacheProbe.Inspect(reportProgress, cancellationToken);
+        if (cached.Name is not null) return cached;
         var scan = PolicyRegistryProbe.Inspect(reportProgress, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        var registry = scan.Resolve();
+        var registry = scan.Resolve() with { Cache = cached.Cache };
         if (registry.Name is not null) return registry;
         reportProgress?.Invoke("No unambiguous registry policy name; checking the Cloud window…");
         var displayed = ReadCloudWindow(cancellationToken);
-        return displayed is not null ? displayed with { Registry = scan } : registry;
+        return displayed is not null ? displayed with { Registry = scan, Cache = cached.Cache } : registry;
     }
 
     private static CloudPolicyInfo? ReadCloudWindow(CancellationToken cancellationToken)

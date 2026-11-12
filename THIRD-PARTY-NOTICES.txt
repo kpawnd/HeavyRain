@@ -1,5 +1,12 @@
 Heavy Rain — third-party notices
 
+Older LLVM dragon artwork — https://llvm.org/Logo.html
+Original: https://llvm.org/img/DragonFull.png
+Copyright Apple Inc. All right, title and interest remain with Apple.
+LLVM's logo page grants a non-exclusive, royalty-free license to use this image.
+Heavy Rain uses a purple recoloring of the older dragon, with no endorsement
+or affiliation implied. The current LLVM wyvern logo is not included.
+
 MahApps.Metro 2.4.11 — https://github.com/MahApps/MahApps.Metro
 
 MIT License

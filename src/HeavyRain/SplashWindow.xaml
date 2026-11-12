@@ -14,7 +14,7 @@
             <Grid>
                 <StackPanel>
                     <TextBlock Text="HEAVY RAIN" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
-                    <TextBlock Text="Getting things ready." FontSize="30" FontWeight="Light" Margin="0,9,0,0"/>
+                    <TextBlock Text="Starting up" FontSize="30" FontWeight="Light" Margin="0,9,0,0"/>
                 </StackPanel>
                 <Button Content="×" Click="Close_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-16,-24,0" Padding="8,0" MinHeight="28" Width="28" FontSize="20" Background="Transparent" BorderThickness="0" ToolTip="Cancel startup" AutomationProperties.Name="Cancel startup"/>
             </Grid>
@@ -22,7 +22,7 @@
             <Grid x:Name="CreditPanel" VerticalAlignment="Center">
                 <Grid.RenderTransform><TranslateTransform x:Name="CreditOffset"/></Grid.RenderTransform>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="108"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <Border BorderBrush="{StaticResource AccentBrush}" BorderThickness="1" Padding="4">
+                <Border BorderThickness="0" Padding="0">
                     <Image Source="Assets/kpawnd-avatar.png" Width="98" Height="98" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="kpawnd GitHub profile image"/>
                 </Border>
                 <StackPanel Grid.Column="1" Margin="24,0,0,0" VerticalAlignment="Center">
@@ -31,12 +31,11 @@
                     <TextBlock Text="github.com/kpawnd" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
                 </StackPanel>
             </Grid>
-            <Border x:Name="LogPanel" Visibility="Collapsed" Opacity="0" Background="{StaticResource InsetBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Padding="15,12">
+            <Border x:Name="LogPanel" Visibility="Collapsed" Opacity="0" Background="Transparent" BorderThickness="0" Padding="0">
                 <Grid>
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <Grid Margin="0,0,0,10">
-                        <TextBlock Text="STARTUP LOG" FontSize="10" Foreground="{StaticResource AccentBrush}"/>
-                        <TextBlock Text="LOCAL CHECKS" FontSize="10" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}"/>
+                        <TextBlock Text="Startup log" FontSize="12" Foreground="{StaticResource AccentBrush}"/>
                     </Grid>
                     <ScrollViewer x:Name="LogScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl x:Name="LogEntries" AutomationProperties.Name="Startup activity">
@@ -56,7 +55,6 @@
             </Grid>
             <StackPanel Grid.Row="2">
                 <TextBlock x:Name="LoadingText" Text="Starting local protection tools…" FontSize="12" Foreground="{StaticResource MutedBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
-                <TextBlock Text="Local control · Heavy Rain" FontSize="10" Foreground="{StaticResource MutedBrush}" Opacity="0.7" Margin="0,8,0,0"/>
             </StackPanel>
         </Grid>
         <metro:MetroProgressBar Grid.Row="2" IsIndeterminate="True" Foreground="{StaticResource AccentBrush}" Background="{StaticResource AccentSurfaceBrush}" Height="4"/>

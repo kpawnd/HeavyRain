@@ -29,6 +29,7 @@ public partial class MainWindow : MetroWindow
     private bool commandUncertain;
     private string deepFreezeVersion = "Unavailable";
     private CloudPolicyInfo policy = CloudPolicyInfo.Unavailable("Not queried yet.");
+    private DateTimeOffset metadataCheckedAt = DateTimeOffset.MinValue;
 
     public MainWindow()
     {
@@ -36,7 +37,8 @@ public partial class MainWindow : MetroWindow
         client = new DfcClient(demo ? new DemoRunner() : new DfcProcessRunner());
         MachineNameText.Text = Environment.MachineName;
         DemoBanner.Visibility = demo ? Visibility.Visible : Visibility.Collapsed;
-        timer.Tick += async (_, _) => { if (!busy) await RefreshAsync(false); };
+        timer.Tick += async (_, _) => { if (!busy && WindowState != WindowState.Minimized) await RefreshAsync(false); };
+        StateChanged += async (_, _) => { if (timer.IsEnabled && WindowState != WindowState.Minimized && !busy) await RefreshAsync(false); };
         Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); PasswordInput.Clear(); };
     }
 
@@ -60,20 +62,23 @@ public partial class MainWindow : MetroWindow
         SetBusy(true, "Querying this computer…");
         try
         {
+            var inspectMetadata = log || installation is null || DateTimeOffset.UtcNow - metadataCheckedAt >= TimeSpan.FromMinutes(5);
+            var previousPolicy = policy;
+            var policyTask = demo ? Task.FromResult(new CloudPolicyInfo("Sample policy", "Demo", "Simulated policy name."))
+                : Task.Run(() => CloudPolicyProbe.Inspect(reportProgress, lifetime.Token), lifetime.Token);
             reportProgress?.Invoke(demo ? "Loading the sample installation…" : "Searching for the local Deep Freeze installation…");
-            installation = demo
-                ? new("Demo — no executable", "Demo", ["Deep Freeze Cloud (sample)"], ["Sample installation evidence"], [])
-                : await Task.Run(() => InstallationProbe.Inspect(customPath, reportProgress, lifetime.Token), lifetime.Token);
+            var installationTask = demo
+                ? Task.FromResult(new InstallationInfo("Demo — no executable", "Demo", ["Deep Freeze Cloud (sample)"], ["Sample installation evidence"], []))
+                : inspectMetadata ? Task.Run(() => InstallationProbe.Inspect(customPath, reportProgress, lifetime.Token), lifetime.Token)
+                : Task.FromResult(installation!);
+            await Task.WhenAll(installationTask, policyTask);
+            installation = await installationTask;
+            policy = await policyTask;
             lifetime.Token.ThrowIfCancellationRequested();
             DfcPathText.Text = installation.DfcPath ?? "DFC.exe was not found. Locate the vendor-supplied executable inside this PC.";
             InstallationText.Text = installation.Products.Length > 0 ? string.Join("\n", installation.Products)
                 : installation.Evidence.Length > 0 ? string.Join("\n", installation.Evidence)
                 : "No matching registration found. This is not proof that Deep Freeze is absent.";
-            reportProgress?.Invoke(demo ? "Loading the sample Cloud policy…" : "Discovering the Cloud policy in the registry…");
-            var previousPolicy = policy;
-            policy = demo ? new("Sample policy", "Demo", "Simulated policy name.")
-                : await Task.Run(() => CloudPolicyProbe.Inspect(reportProgress, lifetime.Token), lifetime.Token);
-            lifetime.Token.ThrowIfCancellationRequested();
             PolicyNameText.Text = policy.Name ?? "Unavailable";
             PolicySourceText.Text = policy.Detail;
             PolicyNameText.ToolTip = policy.Source;
@@ -91,15 +96,19 @@ public partial class MainWindow : MetroWindow
                 : new(ProtectionState.Unknown, "The Deep Freeze control interface is unavailable. A Cloud agent may be present without the Deep Freeze protection component.", null);
             lifetime.Token.ThrowIfCancellationRequested();
             reportProgress?.Invoke($"Protection: {status.State}." + (status.State == ProtectionState.Unknown ? $" {status.Detail}" : ""));
-            reportProgress?.Invoke(demo ? "Loading the sample version…" : installation.DfcPath is not null
-                ? "Running DFC.exe get /VERSION…" : "Skipping the version query: DFC.exe is unavailable.");
-            deepFreezeVersion = installation.DfcPath is { } versionPath ? await client.GetVersionAsync(versionPath, lifetime.Token) : "Unavailable";
+            if (inspectMetadata)
+            {
+                reportProgress?.Invoke(demo ? "Loading the sample version…" : installation.DfcPath is not null
+                    ? "Running DFC.exe get /VERSION…" : "Skipping the version query: DFC.exe is unavailable.");
+                deepFreezeVersion = installation.DfcPath is { } versionPath ? await client.GetVersionAsync(versionPath, lifetime.Token) : "Unavailable";
+                metadataCheckedAt = DateTimeOffset.UtcNow;
+            }
             lifetime.Token.ThrowIfCancellationRequested();
             reportProgress?.Invoke($"Deep Freeze version: {deepFreezeVersion}.");
             VersionText.Text = deepFreezeVersion + (installation.DfcFileVersion is not "Unavailable" and not "Demo" ? $"\nDFC file: {installation.DfcFileVersion}" : "");
             checkedAt = DateTimeOffset.Now;
             RenderStatus();
-            reportProgress?.Invoke(status.State == ProtectionState.Unknown ? "Dashboard ready; protection could not be verified." : "Dashboard ready.");
+            reportProgress?.Invoke(status.State == ProtectionState.Unknown ? "Ready. Protection could not be verified." : "Ready.");
             if (log || previous != status.State) Log($"Status: {status.State}. {status.Detail}" + (status.ExitCode is { } code ? $" (DFC {code})" : ""));
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
@@ -109,7 +118,7 @@ public partial class MainWindow : MetroWindow
             checkedAt = DateTimeOffset.Now;
             RenderStatus();
             Log($"Query failed ({ex.GetType().Name}).");
-            reportProgress?.Invoke($"Query failed ({ex.GetType().Name}); the dashboard will show an unknown state.");
+            reportProgress?.Invoke($"Query failed ({ex.GetType().Name}); protection is unknown.");
         }
         finally { SetBusy(false); }
     }
@@ -117,10 +126,9 @@ public partial class MainWindow : MetroWindow
     private void RenderStatus()
     {
         StateText.Text = status.State.ToString();
-        var color = status.State switch { ProtectionState.Frozen => "#B69AFF", ProtectionState.Thawed => "#E4B6F3", _ => "#B6ADC6" };
-        StateText.Foreground = StateStripe.Background = (Brush)new BrushConverter().ConvertFromString(color)!;
+        StateText.Foreground = StateStripe.Background = (Brush)FindResource(status.State == ProtectionState.Unknown ? "MutedBrush" : "AccentBrush");
         StateDetailText.Text = status.Detail;
-        CheckedText.Text = $"Checked {checkedAt:HH:mm:ss} · {Environment.MachineName} · {(demo ? "Simulated" : "DFC /ISFROZEN")}";
+        CheckedText.Text = $"Checked {checkedAt:HH:mm:ss} · {Environment.MachineName} · {(demo ? "Simulated" : installation?.DfcPath is not null ? "DFC /ISFROZEN" : "No DFC interface")}";
     }
 
     private void SetBusy(bool value, string? label = null)
@@ -137,7 +145,7 @@ public partial class MainWindow : MetroWindow
         if (FreezeButton is null) return;
         FreezeButton.IsEnabled = ThawButton.IsEnabled = true;
         ControlHintText.Text = busy ? "An operation is in progress. Click an action for details."
-            : "Choose an action. Heavy Rain will explain anything needed before it can proceed.";
+            : "Changes require confirmation.";
     }
 
     private async Task ChangeAsync(BootTarget target)
