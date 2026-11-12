@@ -22,7 +22,7 @@ Launch it and approve the Windows administrator prompt. Checks start during the 
 
 Enter a Deep Freeze password with command-line rights, then choose **Freeze PC** or **Thaw PC**. By default, the change applies on the next restart. Tick **Restart immediately after confirmation** if you want to restart now.
 
-Launch with `HeavyRain.exe --silent` to skip the startup sound. Sound playback doesn't delay the checks, and closing the splash stops it.
+Launch with `HeavyRain.exe --silent` to mute startup and error sounds. Sound playback doesn't delay the checks. Error dialogs shake briefly after appearing, even when Windows animations are disabled. Closing a dialog stops its sound and movement.
 
 Save your work first. Restarting a frozen computer can discard changes on protected drives.
 

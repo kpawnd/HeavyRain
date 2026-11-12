@@ -6,7 +6,7 @@
         Width="500" SizeToContent="Height" MinHeight="220" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" WindowTransitionsEnabled="False"
         Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource AccentStrongBrush}" BorderThickness="1"
-        FontFamily="Segoe UI" Loaded="Window_Loaded">
+        FontFamily="Segoe UI" ContentRendered="Window_ContentRendered">
     <Border Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource AccentStrongBrush}" BorderThickness="0,3,0,0" Padding="28">
         <StackPanel>
             <TextBlock Text="HEAVY RAIN" Foreground="{StaticResource AccentBrush}" FontSize="11" Margin="0,0,0,16"/>

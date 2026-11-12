@@ -31,7 +31,7 @@ public partial class App : Application
             splash.Show();
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
             if (cancelled) return;
-            using var startupSound = StartupSound.TryPlay(!e.Args.Contains("--silent", StringComparer.OrdinalIgnoreCase));
+            using var startupSound = EmbeddedSound.TryPlay("HeavyRain.StartupChime.wav", !e.Args.Contains("--silent", StringComparer.OrdinalIgnoreCase));
             await splash.RunStartupAsync(async () =>
             {
                 window = new MainWindow();

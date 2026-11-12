@@ -3,18 +3,18 @@ using System.Runtime.InteropServices;
 
 namespace HeavyRain;
 
-internal sealed class StartupSound : IDisposable
+internal sealed class EmbeddedSound : IDisposable
 {
     private GCHandle buffer;
     private bool playing;
 
-    public static StartupSound? TryPlay(bool enabled)
+    public static EmbeddedSound? TryPlay(string resourceName, bool enabled)
     {
         if (!enabled) return null;
-        var sound = new StartupSound();
+        var sound = new EmbeddedSound();
         try
         {
-            using var resource = typeof(StartupSound).Assembly.GetManifestResourceStream("HeavyRain.StartupChime.wav");
+            using var resource = typeof(EmbeddedSound).Assembly.GetManifestResourceStream(resourceName);
             if (resource is null) return null;
             using var memory = new MemoryStream();
             resource.CopyTo(memory);
