@@ -2,7 +2,7 @@ using HeavyRain.Core;
 
 namespace HeavyRain;
 
-internal sealed class DemoRunner : IDfcRunner
+internal sealed class DemoRunner : ICommandRunner
 {
     public Task<ProcessResult> RunAsync(string executable, IReadOnlyList<string> arguments, CancellationToken cancellationToken = default)
         => Task.FromResult(arguments[1] switch

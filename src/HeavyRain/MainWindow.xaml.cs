@@ -34,24 +34,25 @@ public partial class MainWindow : MetroWindow
     public MainWindow()
     {
         InitializeComponent();
-        client = new DfcClient(demo ? new DemoRunner() : new DfcProcessRunner());
+        client = new DfcClient(demo ? new DemoRunner() : new CommandProcessRunner());
+        aecClient = new AecClient(demo ? new AecDemoRunner() : new CommandProcessRunner());
         MachineNameText.Text = Environment.MachineName;
         DemoBanner.Visibility = demo ? Visibility.Visible : Visibility.Collapsed;
         timer.Tick += async (_, _) => { if (!busy && WindowState != WindowState.Minimized) await RefreshAsync(false); };
         StateChanged += async (_, _) => { if (timer.IsEnabled && WindowState != WindowState.Minimized && !busy) await RefreshAsync(false); };
-        Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); PasswordInput.Clear(); };
+        Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); PasswordInput.Clear(); AecPasswordInput.Clear(); };
     }
 
     public async Task InitializeAsync(Action<string>? reportProgress = null)
     {
-        Log(demo ? "Demo mode started. No DFC processes will run." : $"Local session on {Environment.MachineName}. {(admin ? "Administrator" : "Read-only")}.");
+        Log(demo ? "Demo mode started. No vendor processes will run." : $"Local session on {Environment.MachineName}. {(admin ? "Administrator" : "Read-only")}.");
         reportProgress?.Invoke(admin ? "Administrator access confirmed." : "Running without administrator access.");
         reportProgress?.Invoke($"Runtime ready: {RuntimeInformation.FrameworkDescription} ({RuntimeInformation.ProcessArchitecture}).");
         var libraries = new[] { "HeavyRain.Core", "MahApps.Metro", "ControlzEx", "Microsoft.Xaml.Behaviors", "PresentationFramework", "PresentationCore", "WindowsBase" };
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetName()).OrderBy(assembly => assembly.Name))
             if (libraries.Contains(assembly.Name)) reportProgress?.Invoke($"Loaded {assembly.Name}.dll ({assembly.Version}).");
         reportProgress?.Invoke("Metro interface initialized.");
-        if (demo) reportProgress?.Invoke("Demo mode: using sample data; no Deep Freeze queries will run.");
+        if (demo) reportProgress?.Invoke("Demo mode: using sample data; no vendor commands will run.");
         await RefreshAsync(true, reportProgress);
         if (!lifetime.IsCancellationRequested) timer.Start();
     }
@@ -60,9 +61,11 @@ public partial class MainWindow : MetroWindow
     {
         if (busy || lifetime.IsCancellationRequested) return;
         SetBusy(true);
+        Task aecTask = Task.CompletedTask;
         try
         {
             var inspectMetadata = log || installation is null || DateTimeOffset.UtcNow - metadataCheckedAt >= TimeSpan.FromMinutes(5);
+            aecTask = RefreshAecAsync(inspectMetadata, log, reportProgress);
             var previousPolicy = policy;
             var policyTask = demo ? Task.FromResult(new CloudPolicyInfo("Sample policy", "Demo", "Simulated policy name."))
                 : Task.Run(() => CloudPolicyProbe.Inspect(reportProgress, lifetime.Token), lifetime.Token);
@@ -108,8 +111,9 @@ public partial class MainWindow : MetroWindow
             VersionText.Text = deepFreezeVersion + (installation.DfcFileVersion is not "Unavailable" and not "Demo" ? $"\nDFC file: {installation.DfcFileVersion}" : "");
             checkedAt = DateTimeOffset.Now;
             RenderStatus();
-            reportProgress?.Invoke(status.State == ProtectionState.Unknown ? "Ready. Protection could not be verified." : "Ready.");
             if (log || previous != status.State) Log($"Status: {status.State}. {status.Detail}" + (status.ExitCode is { } code ? $" (DFC {code})" : ""));
+            await aecTask;
+            reportProgress?.Invoke("Ready.");
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -120,7 +124,7 @@ public partial class MainWindow : MetroWindow
             Log($"Query failed ({ex.GetType().Name}).");
             reportProgress?.Invoke($"Query failed ({ex.GetType().Name}); protection is unknown.");
         }
-        finally { SetBusy(false); }
+        finally { await aecTask; SetBusy(false); }
     }
 
     private void RenderStatus()
@@ -136,6 +140,7 @@ public partial class MainWindow : MetroWindow
         busy = value;
         RefreshButton.IsEnabled = BrowseButton.IsEnabled = DetectButton.IsEnabled = ExportButton.IsEnabled = !value;
         PasswordInput.IsEnabled = RestartCheck.IsEnabled = !value;
+        AecPasswordInput.IsEnabled = AecMinutesInput.IsEnabled = AecBrowseButton.IsEnabled = AecDetectButton.IsEnabled = !value;
         UpdateControls();
     }
 
@@ -233,10 +238,11 @@ public partial class MainWindow : MetroWindow
         if (dialog.ShowDialog(this) != true) return;
         var report = new
         {
-            schemaVersion = 1, demo, computer = Environment.MachineName, os = Environment.OSVersion.VersionString,
+            schemaVersion = 2, demo, computer = Environment.MachineName, os = Environment.OSVersion.VersionString,
             administrator = admin, checkedAt, state = status.State.ToString(), status.Detail, status.ExitCode,
             deepFreezeVersion, installation, policy, sessionBootRequest = PendingText.Text,
-            note = "Registry evidence does not establish protection state. Next-boot settings are not queried. Passwords and raw DFC output are excluded.",
+            antiExecutable = new { state = aecStatus.State.ToString(), aecStatus.Detail, aecStatus.ExitCode, checkedAt = aecCheckedAt, version = aecVersion, installation = aecInstallation, uncertain = aecUncertain, sessionRequest = AecPendingText.Text },
+            note = "Registry evidence does not establish protection state. Next-boot settings are not queried. Passwords and raw command output are excluded.",
             activity = activity.ToArray()
         };
         try

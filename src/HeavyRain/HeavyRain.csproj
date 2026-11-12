@@ -28,11 +28,11 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>1.3.2</Version>
+    <Version>1.4.0</Version>
     <Product>Heavy Rain</Product>
     <AssemblyTitle>Heavy Rain</AssemblyTitle>
     <Authors>kpawnd</Authors>
-    <Description>Local Deep Freeze status and boot controls using Faronics DFC.</Description>
+    <Description>Local Deep Freeze and Anti-Executable controls using Faronics command-line tools.</Description>
   </PropertyGroup>
 
 </Project>

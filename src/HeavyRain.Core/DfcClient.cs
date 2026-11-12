@@ -4,16 +4,16 @@ public enum ProtectionState { Unknown, Frozen, Thawed }
 public enum BootTarget { Frozen, Thawed }
 public enum ChangeOutcome { Accepted, Rejected, Uncertain, NotNeeded }
 
-public sealed record ProcessResult(int? ExitCode, bool TimedOut = false, string Output = "", string? Error = null);
+public sealed record ProcessResult(int? ExitCode, bool TimedOut = false, string Output = "", string? Error = null, string StandardError = "");
 public sealed record StatusResult(ProtectionState State, string Detail, int? ExitCode);
 public sealed record ChangeResult(ChangeOutcome Outcome, string Detail, int? ExitCode = null);
 
-public interface IDfcRunner
+public interface ICommandRunner
 {
     Task<ProcessResult> RunAsync(string executable, IReadOnlyList<string> arguments, CancellationToken cancellationToken = default);
 }
 
-public sealed class DfcClient(IDfcRunner runner)
+public sealed class DfcClient(ICommandRunner runner)
 {
     public async Task<StatusResult> QueryAsync(string path, CancellationToken cancellationToken = default)
     {

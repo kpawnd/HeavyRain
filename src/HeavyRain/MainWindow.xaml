@@ -15,7 +15,7 @@
             <Image Source="Assets/dragon.png" Width="64" Height="64" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Purple dragon"/>
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0">
                 <TextBlock Text="Heavy Rain" FontSize="32" FontWeight="Light"/>
-                <TextBlock Text="Deep Freeze controls" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="1,2,0,0"/>
+                <TextBlock Text="Deep Freeze &amp; Anti-Executable" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="1,2,0,0"/>
             </StackPanel>
             <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right">
                 <TextBlock x:Name="MachineNameText" FontSize="12" HorizontalAlignment="Right" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8"/>
@@ -44,7 +44,7 @@
                     </Setter>
                 </Style>
             </TabControl.ItemContainerStyle>
-            <TabItem Header="protection">
+            <TabItem Header="deep freeze">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <StackPanel Margin="0,4,12,0">
                         <Grid Margin="0,0,0,26">
@@ -97,6 +97,55 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+            <TabItem Header="anti-executable" x:Name="AecTab">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,4,12,0">
+                        <Grid Margin="0,0,0,26">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="220"/></Grid.ColumnDefinitions>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="3"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border x:Name="AecStateStripe" Background="{StaticResource MutedBrush}" Margin="0,8,0,0"/>
+                                <StackPanel Grid.Column="1" Margin="17,0,28,0">
+                                    <TextBlock Text="Execution protection" Style="{StaticResource Label}"/>
+                                    <TextBlock x:Name="AecStateText" Text="Checking…" FontSize="46" FontWeight="Light" Margin="-2,-5,0,0"/>
+                                    <TextBlock x:Name="AecDetailText" Text="Looking for Anti-Executable." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,6,0,10"/>
+                                    <TextBlock x:Name="AecCheckedText" Text="Not queried yet" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+                                </StackPanel>
+                            </Grid>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Anti-Executable version" Style="{StaticResource Label}"/>
+                                <TextBlock x:Name="AecVersionText" Text="Unavailable" FontSize="22" Foreground="{StaticResource AccentBrush}"/>
+                                <TextBlock x:Name="AecVersionSourceText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,22,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="32"/><ColumnDefinition Width="270"/></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Protection" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="Anti-Executable password · optional" Style="{StaticResource Label}"/>
+                                    <PasswordBox x:Name="AecPasswordInput" MaxLength="255" FontSize="16" AutomationProperties.Name="Anti-Executable password"/>
+                                    <TextBlock Text="Leave blank if your Windows account has AE administrator rights. Never saved; cleared after each request." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
+                                    <WrapPanel Margin="0,0,0,12">
+                                        <Button x:Name="AecEnableButton" Content="Enable" Style="{StaticResource PrimaryButton}" Click="AecEnable_Click" Margin="0,0,10,8"/>
+                                        <Button x:Name="AecDisableButton" Content="Disable" Click="AecDisable_Click" Margin="0,0,10,8"/>
+                                        <Button x:Name="AecQueryButton" Content="Check status" Click="AecQuery_Click" Margin="0,0,0,8"/>
+                                    </WrapPanel>
+                                    <TextBlock x:Name="AecPendingText" Text="No request in this session." Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Maintenance" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="Duration in minutes" Style="{StaticResource Label}"/>
+                                    <metro:NumericUpDown x:Name="AecMinutesInput" Minimum="1" Maximum="1440" Value="15" Interval="1" NumericInputMode="Numbers" StringFormat="F0" MinHeight="42" AutomationProperties.Name="Maintenance duration in minutes"/>
+                                    <TextBlock Text="Allows software changes and can add executables to the allowed list. Protection resumes when the period ends." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
+                                    <Button x:Name="AecMaintenanceButton" Content="Start maintenance" Click="AecMaintenance_Click" HorizontalAlignment="Left"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <TextBlock Text="Local changes may differ from the Cloud policy." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,22,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
             <TabItem Header="installation">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,4,12,0">
@@ -110,6 +159,14 @@
                         <TextBlock x:Name="InstallationText" FontSize="13" LineHeight="22"/>
                         <TextBlock Text="A registered Cloud agent or driver doesn't establish protection state. Heavy Rain queries DFC to check it." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,18,0,0"/>
                         <Button Content="DFC documentation ↗" Click="Documentation_Click" HorizontalAlignment="Left" Margin="0,24,0,0"/>
+                        <TextBlock Text="Anti-Executable interface" Style="{StaticResource SectionTitle}" Margin="0,30,0,14"/>
+                        <TextBlock x:Name="AecPathText" Text="Searching…" FontFamily="Consolas" FontSize="13"/>
+                        <TextBlock x:Name="AecInstallationDetailText" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,8,0,0"/>
+                        <WrapPanel Margin="0,18,0,0">
+                            <Button x:Name="AecBrowseButton" Content="Locate AEC.exe" Click="AecBrowse_Click" Margin="0,0,12,10"/>
+                            <Button x:Name="AecDetectButton" Content="Auto-detect AEC" Click="AecDetect_Click" Margin="0,0,12,10"/>
+                            <Button Content="AEC documentation ↗" Click="AecDocumentation_Click" Margin="0,0,0,10"/>
+                        </WrapPanel>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

@@ -12,6 +12,7 @@ if (args.FirstOrDefault() == "--fixture")
             for (int i = 0; i < 100; i++) { Console.Write(new string('x', 16384)); Console.Error.Write(new string('y', 16384)); }
             break;
         case "hang": await Task.Delay(30000); break;
+        case "stdin": Console.Write(Console.ReadLine() is null ? "closed" : "open"); break;
         case "exit": return int.Parse(args[2]);
     }
     return 0;
@@ -101,29 +102,29 @@ var assembly = Assembly.GetExecutingAssembly().Location;
 await Check("Real process preserves password-shaped arguments without shell expansion", async () =>
 {
     string[] samples = ["a b", "a\"b", "ending\\", "x&echo bad", "$()", "semi;colon", "雪", ""];
-    var result = await new DfcProcessRunner().RunAsync(dotnet, new[] { assembly, "--fixture", "echo" }.Concat(samples).ToArray());
+    var result = await new CommandProcessRunner().RunAsync(dotnet, new[] { assembly, "--fixture", "echo" }.Concat(samples).ToArray());
     Assert(result.ExitCode == 0, "Child failed");
     Assert(JsonSerializer.Deserialize<string[]>(result.Output)!.SequenceEqual(samples), "Arguments changed");
 });
 await Check("Real process drains stdout and stderr without deadlock or unbounded capture", async () =>
 {
-    var result = await new DfcProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "flood"]);
+    var result = await new CommandProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "flood"]);
     Assert(result.ExitCode == 0 && result.Output.Length == 4096, "Drain failed");
 });
 await Check("Real process timeout is bounded", async () =>
 {
     var sw = Stopwatch.StartNew();
-    var result = await new DfcProcessRunner(TimeSpan.FromMilliseconds(300)).RunAsync(dotnet, [assembly, "--fixture", "hang"]);
+    var result = await new CommandProcessRunner(TimeSpan.FromMilliseconds(300)).RunAsync(dotnet, [assembly, "--fixture", "hang"]);
     Assert(result.TimedOut && result.ExitCode is null && sw.Elapsed < TimeSpan.FromSeconds(5), "Timeout failed");
 });
 await Check("Real exit 1 survives transport", async () =>
-    Assert((await new DfcProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "exit", "1"])).ExitCode == 1, "Boolean return lost"));
+    Assert((await new CommandProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "exit", "1"])).ExitCode == 1, "Boolean return lost"));
 await Check("Missing executable is an error, never thawed", async () =>
-    Assert((await new DfcProcessRunner().RunAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".exe"), ["get", "/ISFROZEN"])).Error is not null, "Missing file not rejected"));
+    Assert((await new CommandProcessRunner().RunAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".exe"), ["get", "/ISFROZEN"])).Error is not null, "Missing file not rejected"));
 await Check("Cancellation before start never reports success", async () =>
 {
     using var cancel = new CancellationTokenSource(); cancel.Cancel();
-    var result = await new DfcProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "echo"], cancel.Token);
+    var result = await new CommandProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "echo"], cancel.Token);
     Assert(result.Error is not null && result.ExitCode is null, "Cancellation lost");
 });
 
@@ -328,10 +329,19 @@ await Check("Missing cache is never created and cancellation stops reads", () =>
     return Task.CompletedTask;
 });
 
+await AecChecks.RunAsync(Check);
+await Check("Control transport closes stdin and preserves bounded stderr", async () =>
+{
+    var input = await new CommandProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "stdin"]);
+    Assert(input.Output == "closed", "Interactive password prompt could wait on input");
+    var output = await new CommandProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "flood"]);
+    Assert(output.StandardError.Length == 4096 && output.Output.Length == 4096 && output.ExitCode == 0, "Bounded stderr transport failed");
+});
+
 Console.WriteLine($"\n{passed} passed, {failed} failed.");
 return failed == 0 ? 0 : 1;
 
-sealed class FakeRunner(params ProcessResult[] results) : IDfcRunner
+sealed class FakeRunner(params ProcessResult[] results) : ICommandRunner
 {
     private readonly Queue<ProcessResult> remaining = new(results);
     public List<string[]> Calls { get; } = [];

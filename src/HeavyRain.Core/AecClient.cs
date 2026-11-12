@@ -1,0 +1,125 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
+namespace HeavyRain.Core;
+
+public enum AecState { Unknown, Enabled, Disabled, Maintenance }
+public enum AecAction { Enable, Disable, Maintenance }
+public sealed record AecStatusResult(AecState State, string Detail, int? ExitCode = null);
+public sealed record AecChangeResult(ChangeOutcome Outcome, string Detail, AecStatusResult? Status = null, int? ExitCode = null);
+
+public sealed class AecClient(ICommandRunner runner)
+{
+    public async Task<AecStatusResult> QueryAsync(string path, string password = "", CancellationToken cancellationToken = default)
+    {
+        if (!ValidPassword(password)) return new(AecState.Unknown, "The Anti-Executable password contains unsupported control characters or is too long.");
+        var result = await RunAsync(path, ["status"], password, cancellationToken);
+        return ParseStatus(result);
+    }
+
+    public async Task<string?> GetVersionAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var result = await RunAsync(path, ["version"], "", cancellationToken);
+        if (!TransportSucceeded(result) || Failure(result) is not null) return null;
+        var match = Regex.Match(result.Output.Trim(), @"\A(?:(?:Faronics\s+)?Anti-Executable\s+)?(?:Version\s*:?\s*)?(\d{1,3}\.\d{1,4}(?:\.\d{1,6}){0,2})\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups[1].Value : null;
+    }
+
+    public async Task<AecChangeResult> ChangeAsync(string path, string password, AecAction action, int minutes = 15,
+        bool allowMaintenanceDisable = false, CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(action)) return new(ChangeOutcome.Rejected, "Invalid Anti-Executable action.");
+        if (!ValidPassword(password)) return new(ChangeOutcome.Rejected, "The Anti-Executable password contains unsupported control characters or is too long.");
+        if (action == AecAction.Maintenance && minutes is < 1 or > 1440)
+            return new(ChangeOutcome.Rejected, "Maintenance must last between 1 and 1440 whole minutes.");
+
+        var current = await QueryAsync(path, password, cancellationToken);
+        if (current.State == AecState.Unknown)
+            return new(ChangeOutcome.Rejected, "No change sent. " + current.Detail, current);
+        var desired = action switch { AecAction.Enable => AecState.Enabled, AecAction.Disable => AecState.Disabled, _ => AecState.Maintenance };
+        if (current.State == desired)
+            return new(ChangeOutcome.NotNeeded, action == AecAction.Maintenance
+                ? "Maintenance is already active. Its duration was not changed."
+                : "Anti-Executable is already in the requested state.", current);
+        if (action == AecAction.Disable && current.State == AecState.Maintenance && !allowMaintenanceDisable)
+            return new(ChangeOutcome.Rejected, "Disabling protection from Maintenance requires confirmation that Maintenance will end and protection will remain off.", current);
+        if (cancellationToken.IsCancellationRequested)
+            return new(ChangeOutcome.Rejected, "No change sent. The operation was cancelled.", current);
+
+        List<string> arguments = action switch
+        {
+            AecAction.Enable => ["protect", "on"],
+            AecAction.Disable => current.State == AecState.Maintenance ? ["protect", "off", "/force"] : ["protect", "off"],
+            _ => ["maintenance", "/duration=" + minutes.ToString(CultureInfo.InvariantCulture)]
+        };
+        var result = await RunAsync(path, arguments, password, cancellationToken);
+        if (result.TimedOut || result.Error is not null || result.ExitCode is null)
+            return new(ChangeOutcome.Uncertain, "The request may have taken effect, but its result could not be read. Check status before retrying.", ExitCode: result.ExitCode);
+        if (result.ExitCode != 0 || Failure(result) is not null)
+            return new(ChangeOutcome.Rejected, Failure(result) ?? $"AEC rejected the request (exit {result.ExitCode}). Check the installed version and Anti-Executable permissions.", ExitCode: result.ExitCode);
+
+        var verified = await QueryAsync(path, password, cancellationToken);
+        if (verified.State != desired)
+            return new(ChangeOutcome.Uncertain, "AEC returned, but the requested state could not be verified. Check status before retrying.", verified, result.ExitCode);
+        return new(ChangeOutcome.Accepted, action switch
+        {
+            AecAction.Enable => "Anti-Executable protection is enabled. Status was verified.",
+            AecAction.Disable => "Anti-Executable protection is disabled. Status was verified.",
+            _ => $"Maintenance is active. A duration of {minutes} minutes was requested; AEC status does not report the remaining time."
+        }, verified, result.ExitCode);
+    }
+
+    public static AecStatusResult ParseStatus(ProcessResult result)
+    {
+        if (!TransportSucceeded(result)) return new(AecState.Unknown, result.TimedOut
+            ? "AEC did not finish within the time limit. Check Anti-Executable before retrying."
+            : result.Error is not null ? "AEC could not be run or its response could not be read. Check the executable and administrator access."
+            : $"AEC did not return a successful status response (exit {result.ExitCode?.ToString() ?? "unavailable"}).", result.ExitCode);
+        if (Failure(result) is { } failure) return new(AecState.Unknown, failure, result.ExitCode);
+        var states = new HashSet<AecState>();
+        var lines = (result.Output + "\n" + result.StandardError).Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var line in lines)
+        {
+            var normalized = Regex.Replace(line, @"\A(?:(?:Anti-Executable\s+)?(?:Protection\s+)?(?:Status|State)\s*:\s*)", "", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Trim().TrimEnd('.');
+            var state = normalized.ToLowerInvariant() switch
+            {
+                "protected" or "enabled" or "protection on" or "protection enabled" => AecState.Enabled,
+                "unprotected" or "disabled" or "protection off" or "protection disabled" => AecState.Disabled,
+                "maintenance" or "maintenance mode" => AecState.Maintenance,
+                _ => AecState.Unknown
+            };
+            if (state != AecState.Unknown) states.Add(state);
+            else if (line.Length > 0) return new(AecState.Unknown, "AEC returned an unrecognized status format. Check status in Anti-Executable; no protection state was inferred.", result.ExitCode);
+        }
+        if (states.Count != 1) return new(AecState.Unknown, lines.Length == 0
+            ? "AEC returned no readable status. Check Anti-Executable permissions, or enter its password and choose Check status."
+            : "AEC returned conflicting states. Check status in Anti-Executable before making changes.", result.ExitCode);
+        var known = states.Single();
+        return new(known, known switch
+        {
+            AecState.Enabled => "Anti-Executable is enforcing its execution rules.",
+            AecState.Disabled => "Anti-Executable execution protection is off.",
+            _ => "Maintenance is active. New or changed executables can be added to the allowed list."
+        }, result.ExitCode);
+    }
+
+    private async Task<ProcessResult> RunAsync(string path, List<string> arguments, string password, CancellationToken cancellationToken)
+    {
+        if (password.Length > 0) arguments.Add("/pw=" + password);
+        try { return await runner.RunAsync(path, arguments, cancellationToken); }
+        finally { arguments.Clear(); }
+    }
+
+    private static bool ValidPassword(string password) => password.Length <= 255 && !password.Any(char.IsControl);
+    private static bool TransportSucceeded(ProcessResult result) => !result.TimedOut && result.Error is null && result.ExitCode == 0;
+
+    private static string? Failure(ProcessResult result)
+    {
+        var output = result.Output + "\n" + result.StandardError;
+        if (Regex.IsMatch(output, @"password|appropriate right|access denied|not authorized|unauthori[sz]ed|permission|administrator", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return "AEC requires an authorized Anti-Executable administrator or a valid Anti-Executable password. Windows elevation alone may not grant access.";
+        if (Regex.IsMatch(output, @"\b(failed|failure|unable|error|cannot|invalid|usage)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return "AEC could not complete the command. Check Anti-Executable permissions, Cloud policy, and Deep Freeze maintenance compatibility.";
+        return null;
+    }
+}

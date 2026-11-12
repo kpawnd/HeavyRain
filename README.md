@@ -1,6 +1,6 @@
 # Heavy Rain
 
-A Windows app for checking Deep Freeze status and choosing whether a PC boots frozen or thawed. Built with C#, WPF and MahApps.Metro.
+A Windows app for Deep Freeze and Anti-Executable. Check protection, choose the next boot state, or start a maintenance period. Built with C#, WPF and MahApps.Metro.
 
 Made by [@kpawnd](https://github.com/kpawnd).
 
@@ -8,6 +8,7 @@ Made by [@kpawnd](https://github.com/kpawnd).
 
 - Frozen, thawed and unknown status, refreshed every 30 seconds.
 - Freeze or thaw on the next boot, with an option to restart immediately.
+- Anti-Executable status, enable/disable controls, and timed maintenance from 1 to 1440 minutes.
 - Local Cloud policy name and Deep Freeze version information.
 - Diagnostic reports you can save as JSON.
 - A dark purple Metro interface with explanations when an action can't run.
@@ -28,6 +29,12 @@ Save your work first. Restarting a frozen computer can discard changes on protec
 
 You need Deep Freeze and a compatible `DFC.exe` installed. The Cloud agent alone isn't enough. A Windows password or Deep Freeze one-time password won't work for these commands.
 
+For Anti-Executable, open **anti-executable**. Heavy Rain looks for `AEC.exe` beside the registered AE service and in Faronics installation folders. You can also select it under **installation**. Leave the password blank if your Windows account has AE administrator rights, or enter your Anti-Executable password. This is separate from the Deep Freeze password.
+
+**Check status** queries AEC with the password you entered. **Enable**, **Disable**, and **Start maintenance** ask for confirmation, check the current state, and verify it again after the command. Disabling during Maintenance ends that mode and leaves protection off. Maintenance can add new or changed executables to the allowed list; it isn't just a temporary pause. Its duration is sent to AEC, but the remaining time isn't reported.
+
+If AEC returns no status, Heavy Rain shows **Unknown** and doesn't send a protection change. A Windows administrator account may still need permission in Anti-Executable. Unrecognized or conflicting responses also stay unknown.
+
 ## Building
 
 Requires Windows and the .NET 10 SDK.
@@ -47,7 +54,7 @@ Use `publish/HeavyRain.exe` for distribution. The normal `bin` build folder cont
 
 Compression reduces the download size but adds some startup work and memory use. For an uncompressed single EXE with the same dependencies, add `-p:EnableCompressionInSingleFile=false` to the publish command.
 
-Run `HeavyRain.exe --demo` for a preview with sample data. Demo mode still asks for administrator privileges, but doesn't send commands to Deep Freeze.
+Run `HeavyRain.exe --demo` for a preview with sample data. Demo mode still asks for administrator privileges, but doesn't run vendor commands. Anti-Executable controls change only the sample state.
 
 ## A few things to know
 
@@ -59,10 +66,10 @@ If the policy stays unavailable, open **activity** and use **Export diagnostics*
 
 Protection and policy refresh every 30 seconds. Installation discovery and version queries run every five minutes, or when you click **Refresh**. Automatic polling pauses while minimized and resumes when restored.
 
-Passwords aren't saved or included in reports. DFC receives the password as a process argument, so administrator tools or Windows command-line auditing may capture it.
+Passwords aren't saved or included in reports. The vendor tools receive passwords as process arguments, so administrator tools or Windows command-line auditing may capture them. Automatic status checks use the Windows account without retaining your password.
 
-Deep Freeze integration still needs testing against the installed agent. The included tests use simulated responses and don't change a computer's protection.
+The AEC location, version, and command syntax were checked on a Cloud-managed VM with Anti-Executable 6.11.2112.730. That installation returned empty status and version responses through the remote session. Live protection changes haven't been tested; command sequencing and failure handling are covered by simulated tests. Deep Freeze integration also needs validation against the installed agent.
 
-Heavy Rain is an independent project. Faronics binaries aren't included. See the [DFC documentation](https://docs.faronics.com/deep-freeze-cloud/using-deep-freeze-cloud-console/deep-freeze-service/advanced-settings-tab/deep-freeze-command-line-syntax) and [third-party notices](THIRD-PARTY-NOTICES.txt).
+Heavy Rain is an independent project. Faronics binaries aren't included. See the [DFC documentation](https://docs.faronics.com/deep-freeze-cloud/using-deep-freeze-cloud-console/deep-freeze-service/advanced-settings-tab/deep-freeze-command-line-syntax), [AEC documentation](https://support.faronics.com/help/en-ca/46-anti-executable/216-what-is-the-command-line-syntax-for-faronics-anti-executable-enterprise), and [third-party notices](THIRD-PARTY-NOTICES.txt).
 
 The purple dragon is a recoloring of the older [LLVM dragon](https://llvm.org/Logo.html), owned by Apple. Heavy Rain isn't affiliated with LLVM or Apple.
