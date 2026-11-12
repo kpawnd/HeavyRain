@@ -135,8 +135,7 @@
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
                                     <TextBlock Text="Maintenance" Style="{StaticResource SectionTitle}"/>
-                                    <TextBlock Text="Duration in minutes" Style="{StaticResource Label}"/>
-                                    <metro:NumericUpDown x:Name="AecMinutesInput" Minimum="1" Maximum="1440" Value="15" Interval="1" NumericInputMode="Numbers" StringFormat="F0" MinHeight="42" AutomationProperties.Name="Maintenance duration in minutes"/>
+                                    <TextBlock Text="1 hour" FontSize="22" Foreground="{StaticResource AccentBrush}"/>
                                     <TextBlock Text="Allows software changes and can add executables to the allowed list. Protection resumes when the period ends." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
                                     <Button x:Name="AecMaintenanceButton" Content="Start maintenance" Click="AecMaintenance_Click" HorizontalAlignment="Left"/>
                                 </StackPanel>

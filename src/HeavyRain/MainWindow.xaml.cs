@@ -140,7 +140,7 @@ public partial class MainWindow : MetroWindow
         busy = value;
         RefreshButton.IsEnabled = BrowseButton.IsEnabled = DetectButton.IsEnabled = ExportButton.IsEnabled = !value;
         PasswordInput.IsEnabled = RestartCheck.IsEnabled = !value;
-        AecPasswordInput.IsEnabled = AecMinutesInput.IsEnabled = AecBrowseButton.IsEnabled = AecDetectButton.IsEnabled = !value;
+        AecPasswordInput.IsEnabled = AecBrowseButton.IsEnabled = AecDetectButton.IsEnabled = !value;
         UpdateControls();
     }
 

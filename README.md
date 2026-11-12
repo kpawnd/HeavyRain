@@ -8,7 +8,7 @@ Made by [@kpawnd](https://github.com/kpawnd).
 
 - Frozen, thawed and unknown status, refreshed every 30 seconds.
 - Freeze or thaw on the next boot, with an option to restart immediately.
-- Anti-Executable status, enable/disable controls, and timed maintenance from 1 to 1440 minutes.
+- Anti-Executable status, enable/disable controls, and one-hour maintenance.
 - Local Cloud policy name and Deep Freeze version information.
 - Diagnostic reports you can save as JSON.
 - A dark purple Metro interface with explanations when an action can't run.
@@ -31,7 +31,7 @@ You need Deep Freeze and a compatible `DFC.exe` installed. The Cloud agent alone
 
 For Anti-Executable, open **anti-executable**. Heavy Rain looks for `AEC.exe` beside the registered AE service and in Faronics installation folders. You can also select it under **installation**. Your Windows account must be authorized in Anti-Executable. Enter the additional Anti-Executable password if one is configured; it is separate from the Deep Freeze password.
 
-**Check status** queries AEC with the password you entered. **Enable**, **Disable**, and **Start maintenance** ask for confirmation, check the current state, and verify it again after the command. Disabling during Maintenance ends that mode and leaves protection off. Maintenance can add new or changed executables to the allowed list; it isn't just a temporary pause. Its duration is sent to AEC, but the remaining time isn't reported.
+**Check status** queries AEC with the password you entered. **Enable**, **Disable**, and **Start maintenance** ask for confirmation, check the current state, and verify it again after the command. Maintenance requests one hour. Disabling during Maintenance ends that mode and leaves protection off. Maintenance can add new or changed executables to the allowed list; it isn't just a temporary pause. AEC doesn't report the remaining time.
 
 AEC can reject an unauthorized account silently, returning exit code 0 without any status. When that happens, Heavy Rain runs a separate, read-only `status` diagnostic and recognizes a small set of AEC's internal error messages. **Not authorized** means AEC classified the Windows account as an External User. In a Cloud policy, add the account under **Anti-Executable → User Settings → Trusted Users**, then apply the policy and check again. The AE password is an extra check for authorized accounts; it doesn't grant access on its own.
 

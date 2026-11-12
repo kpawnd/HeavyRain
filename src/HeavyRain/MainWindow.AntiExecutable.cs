@@ -105,19 +105,11 @@ public partial class MainWindow
     private async Task ChangeAecAsync(AecAction action)
     {
         if (AecBlocked(true)) return;
-        var duration = AecMinutesInput.Value;
-        if (action == AecAction.Maintenance && (duration is null || !double.IsFinite(duration.Value) || duration < 1 || duration > 1440 || duration != Math.Truncate(duration.Value)))
-        {
-            AecPasswordInput.Clear();
-            new ActionNoticeWindow(new("Choose a maintenance duration", "Enter a whole number of minutes from 1 to 1440.")) { Owner = this }.ShowDialog();
-            return;
-        }
-        var minutes = action == AecAction.Maintenance ? (int)duration!.Value : 15;
         var message = action switch
         {
             AecAction.Enable => "Enable Anti-Executable protection now? If Maintenance is active, this ends it and applies its learned changes.",
             AecAction.Disable => "Disable Anti-Executable protection now? Execution rules will stop being enforced. If Maintenance is active, this ends it and leaves protection off.",
-            _ => $"Start Maintenance for {minutes} minutes? New or modified executables can be added to the allowed list. Protection resumes when the period ends."
+            _ => "Start Maintenance for one hour? New or modified executables can be added to the allowed list. Protection resumes when the period ends."
         };
         SetBusy(true);
         timer.Stop();
@@ -131,7 +123,7 @@ public partial class MainWindow
                 { AffirmativeButtonText = "Confirm change", NegativeButtonText = "Cancel", DefaultButtonFocus = MessageDialogResult.Negative });
             if (confirmation != MessageDialogResult.Affirmative || lifetime.IsCancellationRequested) return;
             sent = true;
-            var result = await aecClient.ChangeAsync(aecInstallation!.Path!, password, action, minutes, allowMaintenanceDisable: action == AecAction.Disable, cancellationToken: lifetime.Token);
+            var result = await aecClient.ChangeAsync(aecInstallation!.Path!, password, action, allowMaintenanceDisable: action == AecAction.Disable, cancellationToken: lifetime.Token);
             if (lifetime.IsCancellationRequested) return;
             ApplyAecStatus(result.Status ?? new(AecState.Unknown, "Check status to verify the current Anti-Executable state."));
             aecUncertain = result.Outcome == ChangeOutcome.Uncertain;

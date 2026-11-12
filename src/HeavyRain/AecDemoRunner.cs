@@ -18,7 +18,7 @@ internal sealed class AecDemoRunner : ICommandRunner
         if (command == "maintenance")
         {
             state = "Maintenance Mode";
-            maintenanceEnds = DateTimeOffset.UtcNow.AddMinutes(int.Parse(arguments[1].Split('=')[1], System.Globalization.CultureInfo.InvariantCulture));
+            maintenanceEnds = DateTimeOffset.UtcNow.AddMinutes(AecClient.MaintenanceMinutes);
         }
         return Task.FromResult(new ProcessResult(0));
     }

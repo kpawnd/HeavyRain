@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace HeavyRain.Core;
@@ -10,6 +9,8 @@ public sealed record AecChangeResult(ChangeOutcome Outcome, string Detail, AecSt
 
 public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagnosticReader = null)
 {
+    public const int MaintenanceMinutes = 60;
+
     public async Task<AecStatusResult> QueryAsync(string path, string password = "", CancellationToken cancellationToken = default)
     {
         if (!ValidPassword(password)) return new(AecState.Unknown, "The Anti-Executable password contains unsupported control characters or is too long.");
@@ -30,13 +31,11 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
         return match.Success ? match.Groups[1].Value : null;
     }
 
-    public async Task<AecChangeResult> ChangeAsync(string path, string password, AecAction action, int minutes = 15,
+    public async Task<AecChangeResult> ChangeAsync(string path, string password, AecAction action,
         bool allowMaintenanceDisable = false, CancellationToken cancellationToken = default)
     {
         if (!Enum.IsDefined(action)) return new(ChangeOutcome.Rejected, "Invalid Anti-Executable action.");
         if (!ValidPassword(password)) return new(ChangeOutcome.Rejected, "The Anti-Executable password contains unsupported control characters or is too long.");
-        if (action == AecAction.Maintenance && minutes is < 1 or > 1440)
-            return new(ChangeOutcome.Rejected, "Maintenance must last between 1 and 1440 whole minutes.");
 
         var current = await QueryAsync(path, password, cancellationToken);
         if (current.State == AecState.Unknown)
@@ -55,7 +54,7 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
         {
             AecAction.Enable => ["protect", "on"],
             AecAction.Disable => current.State == AecState.Maintenance ? ["protect", "off", "/force"] : ["protect", "off"],
-            _ => ["maintenance", "/duration=" + minutes.ToString(CultureInfo.InvariantCulture)]
+            _ => ["maintenance", "/duration=" + MaintenanceMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture)]
         };
         var result = await RunAsync(path, arguments, password, cancellationToken);
         if (result.TimedOut || result.Error is not null || result.ExitCode is null)
@@ -70,7 +69,7 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
         {
             AecAction.Enable => "Anti-Executable protection is enabled. Status was verified.",
             AecAction.Disable => "Anti-Executable protection is disabled. Status was verified.",
-            _ => $"Maintenance is active. A duration of {minutes} minutes was requested; AEC status does not report the remaining time."
+            _ => "Maintenance is active. One hour was requested; AEC status does not report the remaining time."
         }, verified, result.ExitCode);
     }
 

@@ -41,7 +41,7 @@ internal static class AecChecks
         {
             ("Unprotected", AecAction.Enable, "Protected", ["protect", "on"]),
             ("Protected", AecAction.Disable, "Unprotected", ["protect", "off"]),
-            ("Protected", AecAction.Maintenance, "Maintenance Mode", ["maintenance", "/duration=15"]),
+            ("Protected", AecAction.Maintenance, "Maintenance Mode", ["maintenance", "/duration=60"]),
             ("Maintenance Mode", AecAction.Enable, "Protected", ["protect", "on"]),
             ("Maintenance Mode", AecAction.Disable, "Unprotected", ["protect", "off", "/force"])
         })
@@ -77,19 +77,12 @@ internal static class AecChecks
             Assert((await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Disable)).Outcome == ChangeOutcome.Rejected && runner.Calls.Count == 1, "Unexpected force");
         });
 
-        foreach (var duration in new[] { -1, 0, 1441, int.MaxValue })
-        await check($"AEC rejects maintenance duration {duration}", async () =>
-        {
-            var runner = new FakeRunner();
-            Assert((await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Maintenance, duration)).Outcome == ChangeOutcome.Rejected && runner.Calls.Count == 0, "Invalid duration sent");
-        });
-
-        foreach (var duration in new[] { 1, 1440 })
-        await check($"AEC accepts maintenance duration boundary {duration}", async () =>
+        await check("AEC maintenance always requests one hour without locking input", async () =>
         {
             var runner = new FakeRunner(new ProcessResult(0, Output: "Protected"), new(0), new(0, Output: "Maintenance Mode"));
-            Assert((await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Maintenance, duration)).Outcome == ChangeOutcome.Accepted, "Valid duration blocked");
-            Assert(runner.Calls[1].SequenceEqual(new[] { "maintenance", $"/duration={duration}" }), "Duration or unwanted lock argument");
+            var result = await new AecClient(runner).ChangeAsync("AEC.exe", "", AecAction.Maintenance);
+            Assert(result.Outcome == ChangeOutcome.Accepted && result.Detail.Contains("One hour"), "One-hour request not confirmed");
+            Assert(runner.Calls[1].SequenceEqual(new[] { "maintenance", "/duration=60" }), "Wrong duration or unwanted lock argument");
         });
 
         foreach (var password in new[] { "line\nbreak", "null\0byte", new string('x', 256) })
