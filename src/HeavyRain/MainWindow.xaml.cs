@@ -59,7 +59,7 @@ public partial class MainWindow : MetroWindow
     private async Task RefreshAsync(bool log, Action<string>? reportProgress = null)
     {
         if (busy || lifetime.IsCancellationRequested) return;
-        SetBusy(true, "Querying this computer…");
+        SetBusy(true);
         try
         {
             var inspectMetadata = log || installation is null || DateTimeOffset.UtcNow - metadataCheckedAt >= TimeSpan.FromMinutes(5);
@@ -131,12 +131,11 @@ public partial class MainWindow : MetroWindow
         CheckedText.Text = $"Checked {checkedAt:HH:mm:ss} · {Environment.MachineName} · {(demo ? "Simulated" : installation?.DfcPath is not null ? "DFC /ISFROZEN" : "No DFC interface")}";
     }
 
-    private void SetBusy(bool value, string? label = null)
+    private void SetBusy(bool value)
     {
         busy = value;
         RefreshButton.IsEnabled = BrowseButton.IsEnabled = DetectButton.IsEnabled = ExportButton.IsEnabled = !value;
         PasswordInput.IsEnabled = RestartCheck.IsEnabled = !value;
-        FooterText.Text = label ?? $"Refreshes every 30 seconds · {(admin ? "Administrator" : "Standard user")} · Local control only";
         UpdateControls();
     }
 
@@ -166,7 +165,7 @@ public partial class MainWindow : MetroWindow
             (status.State == ProtectionState.Frozen ? "Restarting while frozen can discard changes on protected drives.\n\n" : "Freezing will protect the computer's current contents after restart.\n\n") +
             "The Deep Freeze command-line password is required. Cloud policy may need to be reapplied afterward.";
         timer.Stop();
-        SetBusy(true, "Awaiting confirmation…");
+        SetBusy(true);
         var confirmation = await this.ShowMessageAsync(restart ? "Restart and change protection?" : "Change the next boot?",
             message, MessageDialogStyle.AffirmativeAndNegative, new MetroDialogSettings
             {
@@ -177,7 +176,7 @@ public partial class MainWindow : MetroWindow
         {
             PasswordInput.Clear(); SetBusy(false); timer.Start(); return;
         }
-        SetBusy(true, $"Requesting {targetName}…");
+        SetBusy(true);
         var password = PasswordInput.Password;
         PasswordInput.Clear();
         try
@@ -252,6 +251,12 @@ public partial class MainWindow : MetroWindow
     {
         try { Process.Start(new ProcessStartInfo(DocsUrl) { UseShellExecute = true }); }
         catch (System.ComponentModel.Win32Exception) { Log("Windows could not open the documentation in a browser."); }
+    }
+
+    private void GitHub_Click(object sender, RoutedEventArgs e)
+    {
+        try { Process.Start(new ProcessStartInfo("https://github.com/kpawnd") { UseShellExecute = true }); }
+        catch (System.ComponentModel.Win32Exception) { Log("Windows could not open the GitHub profile in a browser."); }
     }
 
     private void Log(string message)

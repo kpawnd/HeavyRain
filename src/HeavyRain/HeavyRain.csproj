@@ -9,6 +9,7 @@
     <Resource Include="Assets\kpawnd-avatar.png" />
     <Resource Include="Assets\heavy-rain.ico" />
     <Resource Include="Assets\dragon.png" />
+    <EmbeddedResource Include="Assets\startup-chime.wav" LogicalName="HeavyRain.StartupChime.wav" />
     <EmbeddedResource Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" />
   </ItemGroup>
 
@@ -26,7 +27,7 @@
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
-    <Version>1.3.0</Version>
+    <Version>1.3.1</Version>
     <Product>Heavy Rain</Product>
     <AssemblyTitle>Heavy Rain</AssemblyTitle>
     <Authors>kpawnd</Authors>

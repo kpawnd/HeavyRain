@@ -122,11 +122,23 @@
             </TabItem>
         </TabControl>
         <Grid Grid.Row="3" Margin="0,20,0,0">
-            <TextBlock x:Name="FooterText" Text="Ready" Foreground="{StaticResource MutedBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,115,0"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Image Source="Assets/kpawnd-avatar.png" Width="22" Height="22" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="kpawnd GitHub avatar"/>
-                <TextBlock Text="@kpawnd" FontSize="12" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </StackPanel>
+            <Button x:Name="GitHubButton" Click="GitHub_Click" HorizontalAlignment="Right" Background="Transparent" BorderThickness="0" Padding="0" MinHeight="0" ToolTip="Open github.com/kpawnd" AutomationProperties.Name="Open kpawnd's GitHub profile">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="4" BorderBrush="Transparent" BorderThickness="1" x:Name="LinkBorder">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="LinkBorder" Property="Background" Value="{StaticResource AccentSurfaceBrush}"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="LinkBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="Assets/kpawnd-avatar.png" Width="22" Height="22" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="kpawnd GitHub avatar"/>
+                    <TextBlock Text="@kpawnd" FontSize="12" Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                </StackPanel>
+            </Button>
         </Grid>
     </Grid>
 </metro:MetroWindow>

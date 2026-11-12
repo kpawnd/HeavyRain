@@ -12,6 +12,7 @@ Made by [@kpawnd](https://github.com/kpawnd).
 - Diagnostic reports you can save as JSON.
 - A dark purple Metro interface with explanations when an action can't run.
 - A six-second startup screen with live installation, policy and status checks.
+- An original synth startup chime, embedded in the EXE.
 
 ## Using it
 
@@ -20,6 +21,8 @@ Copy `HeavyRain.exe` wherever you want to run it. The portable build compresses 
 Launch it and approve the Windows administrator prompt. Checks start during the credit animation, then the log shows the loaded libraries, searched locations and query results. Heavy Rain looks for `DFC.exe` automatically. If it can't find it, open **installation** and use **Locate DFC.exe** to select the copy supplied with your Deep Freeze installation.
 
 Enter a Deep Freeze password with command-line rights, then choose **Freeze PC** or **Thaw PC**. By default, the change applies on the next restart. Tick **Restart immediately after confirmation** if you want to restart now.
+
+Launch with `HeavyRain.exe --silent` to skip the startup sound. Sound playback doesn't delay the checks, and closing the splash stops it.
 
 Save your work first. Restarting a frozen computer can discard changes on protected drives.
 
