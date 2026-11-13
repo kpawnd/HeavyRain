@@ -90,12 +90,13 @@ public partial class MainWindow : MetroWindow
             installation = await installationTask;
             policy = await policyTask;
             lifetime.Token.ThrowIfCancellationRequested();
-            DfcPathText.Text = installation.DfcPath ?? "DFC.exe was not found. Locate the vendor-supplied executable inside this PC.";
+            DfcPathText.Text = installation.DfcPath ?? "Not found";
             InstallationText.Text = installation.Products.Length > 0 ? string.Join("\n", installation.Products)
                 : installation.Evidence.Length > 0 ? string.Join("\n", installation.Evidence)
-                : "No matching registration found. This is not proof that Deep Freeze is absent.";
+                : "No matching registration found";
             PolicyNameText.Text = policy.Name ?? "Unavailable";
-            PolicySourceText.Text = policy.Detail;
+            PolicySourceText.Text = policy.Name is null ? policy.Detail : "";
+            PolicySourceText.Visibility = policy.Name is null ? Visibility.Visible : Visibility.Collapsed;
             PolicyNameText.ToolTip = policy.Source;
             reportProgress?.Invoke(policy.Name is { } name ? $"Policy: {name} ({policy.Source})." : $"Policy unavailable. {policy.Detail}");
             if (log || previousPolicy.Name != policy.Name || previousPolicy.Source != policy.Source)
@@ -143,8 +144,10 @@ public partial class MainWindow : MetroWindow
     {
         StateText.Text = status.State.ToString();
         StateText.Foreground = StateStripe.Background = (Brush)FindResource(status.State == ProtectionState.Unknown ? "MutedBrush" : "AccentBrush");
-        StateDetailText.Text = status.Detail;
-        CheckedText.Text = $"Checked {checkedAt:HH:mm:ss} · {Environment.MachineName} · {(demo ? "Simulated" : installation?.DfcPath is not null ? "DFC /ISFROZEN" : "No DFC interface")}";
+        // The detail only earns its space when it explains why the state is unknown.
+        StateDetailText.Text = status.State == ProtectionState.Unknown ? status.Detail : "";
+        StateDetailText.Visibility = status.State == ProtectionState.Unknown ? Visibility.Visible : Visibility.Collapsed;
+        CheckedText.Text = $"Checked {checkedAt:HH:mm:ss}{(demo ? " · simulated" : "")}";
     }
 
     private void SetBusy(bool value)
@@ -167,8 +170,6 @@ public partial class MainWindow : MetroWindow
     {
         if (FreezeButton is null) return;
         FreezeButton.IsEnabled = ThawButton.IsEnabled = true;
-        ControlHintText.Text = busy ? "An operation is in progress. Click an action for details."
-            : "Changes require confirmation.";
     }
 
     private async Task ChangeAsync(BootTarget target)
@@ -212,9 +213,9 @@ public partial class MainWindow : MetroWindow
             ResultText.Text = result.Detail;
             Log($"{target} {(restart ? "and restart" : "next boot")}: {result.Outcome}. {result.Detail}");
             if (result.Outcome == ChangeOutcome.Accepted)
-                PendingText.Text = $"{target} requested at {DateTime.Now:HH:mm:ss}{(demo ? " (demo)" : "")}. DFC accepted the request; verify after restart. This is a session record, not a query of next-boot settings.";
+                PendingText.Text = $"{target}{(restart ? ", restarting now" : " at next restart")} · {DateTime.Now:HH:mm:ss}{(demo ? " (demo)" : "")}";
             else if (result.Outcome == ChangeOutcome.Uncertain)
-                PendingText.Text = $"{target} request has an unknown outcome. Verify next-boot settings in Deep Freeze before retrying.";
+                PendingText.Text = $"{target} · outcome unknown · {DateTime.Now:HH:mm:ss}";
             if (result.Outcome is ChangeOutcome.Rejected or ChangeOutcome.Uncertain or ChangeOutcome.NotNeeded)
                 new ActionNoticeWindow(new("The change could not be completed", result.Detail)) { Owner = this }.ShowDialog();
         }
@@ -223,7 +224,7 @@ public partial class MainWindow : MetroWindow
             commandUncertain = true;
             ResultBanner.Visibility = Visibility.Visible;
             ResultText.Text = "The request could not be confirmed. Check Deep Freeze before retrying; it may already have applied the change.";
-            PendingText.Text = "Last request outcome unknown. Verify next-boot settings in Deep Freeze.";
+            PendingText.Text = $"{target} · outcome unknown · {DateTime.Now:HH:mm:ss}";
             Log($"Change outcome unknown ({ex.GetType().Name}).");
             new ActionNoticeWindow(new("The result could not be confirmed", ResultText.Text)) { Owner = this }.ShowDialog();
         }
@@ -260,7 +261,7 @@ public partial class MainWindow : MetroWindow
             schemaVersion = 2, demo, computer = Environment.MachineName, os = Environment.OSVersion.VersionString,
             administrator = admin, checkedAt, state = status.State.ToString(), status.Detail, status.ExitCode,
             deepFreezeVersion, installation, policy, sessionBootRequest = PendingText.Text,
-            antiExecutable = new { state = aecStatus.State.ToString(), aecStatus.Detail, aecStatus.ExitCode, diagnostic = aecStatus.Diagnostic.ToString(), checkedAt = aecCheckedAt, version = aecVersion, installation = aecInstallation, uncertain = aecUncertain, sessionRequest = AecPendingText.Text },
+            antiExecutable = new { state = aecStatus.State.ToString(), aecStatus.Detail, aecStatus.ExitCode, diagnostic = aecStatus.Diagnostic.ToString(), checkedAt = aecCheckedAt, version = aecVersion, installation = aecInstallation, uncertain = aecUncertain, sessionRequest = AecPendingText.Text, policy = aecPolicyInfo?.Policy },
             note = "Registry evidence does not establish protection state. Next-boot settings are not queried. Passwords and raw command output are excluded.",
             activity = activity.ToArray()
         };

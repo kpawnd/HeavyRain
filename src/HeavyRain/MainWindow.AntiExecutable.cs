@@ -18,6 +18,9 @@ public partial class MainWindow
     private string? aecVersion;
     private bool aecUncertain;
     private AecAction? aecPendingAction;
+    private AecPolicyInfo? aecPolicyInfo;
+    private string? aecActivitySignature;
+    private const int AecActivityLimit = 100;
 
     private async Task RefreshAecAsync(bool inspectMetadata, bool log, Action<string>? progress = null)
     {
@@ -31,11 +34,12 @@ public partial class MainWindow
                 if (!demo && aecInstallation.Path is not null) progress?.Invoke("Running AEC.exe version…");
                 aecVersion = aecInstallation.Path is { } path ? await aecClient.GetVersionAsync(path, lifetime.Token) : null;
                 lifetime.Token.ThrowIfCancellationRequested();
-                AecPathText.Text = aecInstallation.Path ?? "AEC.exe was not found. Select the Faronics executable supplied with Anti-Executable.";
+                AecPathText.Text = aecInstallation.Path ?? "Not found";
                 AecInstallationDetailText.Text = string.Join("\n", aecInstallation.Warnings);
                 AecVersionText.Text = aecVersion ?? aecInstallation.FileVersion;
-                AecVersionSourceText.Text = demo ? "Sample version" : aecVersion is not null ? "Reported by AEC" : aecInstallation.Path is not null ? "AEC file version · version command unavailable" : "No AEC interface";
-                progress?.Invoke($"Anti-Executable version: {AecVersionText.Text} ({AecVersionSourceText.Text}).");
+                var versionSource = demo ? "sample" : aecVersion is not null ? "reported by AEC" : aecInstallation.Path is not null ? "AEC file version" : "no AEC interface";
+                AecVersionText.ToolTip = char.ToUpperInvariant(versionSource[0]) + versionSource[1..];
+                progress?.Invoke($"Anti-Executable version: {AecVersionText.Text} ({versionSource}).");
             }
             var previous = aecStatus;
             progress?.Invoke(demo ? "Loading the sample Anti-Executable state…" : aecInstallation.Path is not null ? "Running AEC.exe status…" : "Skipping Anti-Executable status: AEC.exe is unavailable.");
@@ -43,15 +47,159 @@ public partial class MainWindow
                 : new(AecState.Unknown, "The Anti-Executable control interface is unavailable. Open installation to locate AEC.exe.");
             lifetime.Token.ThrowIfCancellationRequested();
             ApplyAecStatus(result);
-            progress?.Invoke($"Anti-Executable: {AecStateText.Text}. {result.Detail}");
+            progress?.Invoke($"Anti-Executable: {AecStateText.Text}." + (result.State == AecState.Unknown ? $" {result.Detail}" : ""));
             if (log || previous != result) Log($"Anti-Executable: {AecStateText.Text}. {result.Detail}");
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return; }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             ApplyAecStatus(new(AecState.Unknown, "The Anti-Executable query could not be completed. Check status to try again."));
             Log($"Anti-Executable query failed ({ex.GetType().Name}).");
             progress?.Invoke("Anti-Executable query failed; its state is unknown.");
+        }
+        await RefreshAecInsightsAsync(progress);
+    }
+
+    // Policy and activity are read separately from the protection state, so a missing or locked
+    // log never affects the reported state.
+    private async Task RefreshAecInsightsAsync(Action<string>? progress)
+    {
+        try
+        {
+            progress?.Invoke(demo ? "Loading the sample Anti-Executable policy and log…" : "Reading Anti-Executable policy settings and log…");
+            AecPolicyInfo info;
+            IReadOnlyList<AeLogEntry>? entries;
+            string? error;
+            if (demo) (info, entries, error) = (new AecPolicyInfo(AecDemoInsights.Policy, "sample data", null), AeLog.Parse(AecDemoInsights.LogLines), null);
+            else (info, entries, error) = await Task.Run(ReadAecInsights, lifetime.Token);
+            lifetime.Token.ThrowIfCancellationRequested();
+            ApplyAecPolicy(info);
+            ApplyAecActivity(entries, info.LogPath, error);
+            progress?.Invoke(info.Policy is { } aePolicy
+                ? $"Anti-Executable policy: unknown files · {(aePolicy.UnknownFiles is { } unknown ? AecPolicy.Humanize(unknown) : "not set")}."
+                : info.Warning ?? "Anti-Executable policy settings not found.");
+            progress?.Invoke(entries is null ? error ?? "Anti-Executable log unavailable."
+                : entries.Count == 0 ? "Anti-Executable log: no recent entries."
+                : $"Anti-Executable log: {Math.Min(entries.Count, AecActivityLimit)} recent entries, latest · {entries[^1].Event.TrimEnd('.')}.");
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Log($"Anti-Executable policy or activity could not be read ({ex.GetType().Name}).");
+            ApplyAecActivity(null, "", "Anti-Executable's activity couldn't be read.");
+        }
+    }
+
+    private static (AecPolicyInfo Info, IReadOnlyList<AeLogEntry>? Entries, string? Error) ReadAecInsights()
+    {
+        var info = AecPolicyProbe.Read();
+        try
+        {
+            if (!File.Exists(info.LogPath)) return (info, null, $"Anti-Executable's log wasn't found at {info.LogPath}.");
+            return (info, AeLog.Parse(AeLog.ReadTailLines(info.LogPath)), null);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            return (info, null, $"Anti-Executable's log couldn't be read ({ex.GetType().Name}).");
+        }
+    }
+
+    private void ApplyAecPolicy(AecPolicyInfo info)
+    {
+        aecPolicyInfo = info;
+        var aePolicy = info.Policy;
+        AecPolicyText.Text = aePolicy is null ? "Unavailable" : string.Join("\n", aePolicy.Describe().Select(item => $"{item.Label}: {item.Value}"));
+        // Only problems get a line here; where the settings come from is in the README.
+        var problem = demo ? null : info.Warning ?? (aePolicy is null ? "No policy settings found" : null);
+        AecPolicySourceText.Text = problem ?? "";
+        AecPolicySourceText.Visibility = problem is null ? Visibility.Collapsed : Visibility.Visible;
+        AecPolicyNoteText.Visibility = aePolicy?.UnknownFilesRun == true ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ApplyAecActivity(IReadOnlyList<AeLogEntry>? entries, string logPath, string? error)
+    {
+        AecActivityList.ToolTip = entries is null || demo ? null : logPath;
+        if (entries is null)
+        {
+            aecActivitySignature = null;
+            AecActivityList.ItemsSource = null;
+            ShowAecActivityProblem(error ?? "Anti-Executable's log is unavailable.");
+            return;
+        }
+        var newest = AeLog.Newest(entries, AecActivityLimit);
+        ShowAecActivityProblem(newest.Count == 0 ? "No recent entries" : null);
+        var signature = newest.Count == 0 ? "" : $"{entries.Count}|{newest[0]}";
+        if (signature == aecActivitySignature) return;
+        aecActivitySignature = signature;
+        var selected = (AecActivityList.SelectedItem as AecActivityItem)?.Entry;
+        var items = newest.Select(entry => new AecActivityItem(entry)).ToList();
+        AecActivityList.ItemsSource = items;
+        if (selected is not null) AecActivityList.SelectedItem = items.FirstOrDefault(item => item.Entry == selected);
+    }
+
+    private void ShowAecActivityProblem(string? problem)
+    {
+        AecActivitySourceText.Text = problem ?? "";
+        AecActivitySourceText.Visibility = problem is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private async void AecAllow_Click(object sender, RoutedEventArgs e)
+    {
+        if (AecActivityList.SelectedItem is not AecActivityItem { Entry.FilePath: { } file } item)
+        {
+            new ActionNoticeWindow(new("Select a program to allow", "Choose an activity entry for a program, such as an Unknown File entry, then choose Allow selected file.")) { Owner = this }.ShowDialog();
+            return;
+        }
+        if (AecBlocked(true)) return;
+        if (!AecClient.IsAllowablePath(file))
+        {
+            new ActionNoticeWindow(new("This entry can't be allowed", "Only programs with a full local path can be added to the allowed list.")) { Owner = this }.ShowDialog();
+            return;
+        }
+        if (!demo && !File.Exists(file))
+        {
+            new ActionNoticeWindow(new("The file is no longer there", $"{file} wasn't found, so there's nothing to allow. It may have been moved or deleted, or removed by a frozen restart.")) { Owner = this }.ShowDialog();
+            return;
+        }
+        var entry = item.Entry;
+        var details = string.Join("\n", new[]
+        {
+            entry.Product is null ? null : $"Product: {entry.Product}{(entry.Version is null ? "" : " " + entry.Version)}",
+            entry.Publisher is null ? null : $"Publisher: {entry.Publisher}",
+            entry.Hash is null ? null : $"Hash: {entry.Hash}",
+            $"Logged: {entry.Time} · {entry.Event}"
+        }.Where(line => line is not null));
+        SetBusy(true);
+        timer.Stop();
+        var password = AecPasswordInput.Password;
+        AecPasswordInput.Clear();
+        try
+        {
+            var confirmation = await this.ShowMessageAsync("Allow this file?",
+                $"Computer: {Environment.MachineName}{(demo ? " (DEMO)" : "")}\n\n{file}\n{details}\n\nAnti-Executable will add it to the local allowed list, so it can run even when unknown programs are blocked. Only allow files you trust.\n\nLocal changes may differ from the Cloud policy.",
+                MessageDialogStyle.AffirmativeAndNegative, new MetroDialogSettings
+                { AffirmativeButtonText = "Allow file", NegativeButtonText = "Cancel", DefaultButtonFocus = MessageDialogResult.Negative });
+            if (confirmation != MessageDialogResult.Affirmative || lifetime.IsCancellationRequested) return;
+            var result = await aecClient.AllowAsync(aecInstallation!.Path!, password, file, lifetime.Token);
+            if (lifetime.IsCancellationRequested) return;
+            SetActivity(false);
+            AecPendingText.Text = $"{DateTime.Now:HH:mm:ss} · {result.Detail}";
+            Log($"Anti-Executable allow {entry.FileName}: {result.Outcome}. {result.Detail}");
+            if (result.Outcome is ChangeOutcome.Rejected or ChangeOutcome.Uncertain)
+                new ActionNoticeWindow(new(result.Outcome == ChangeOutcome.Rejected ? "Anti-Executable didn't allow the file" : "The allow request's result is unknown", result.Detail)) { Owner = this }.ShowDialog();
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            SetActivity(false);
+            AecPendingText.Text = "The allow request couldn't be completed. It may have taken effect; check the allowed list in Anti-Executable.";
+            Log($"Anti-Executable allow failed ({ex.GetType().Name}).");
+            new ActionNoticeWindow(new("The allow request couldn't be completed", AecPendingText.Text)) { Owner = this }.ShowDialog();
+        }
+        finally
+        {
+            password = string.Empty; AecPasswordInput.Clear(); SetBusy(false);
+            if (!lifetime.IsCancellationRequested) timer.Start();
         }
     }
 
@@ -78,8 +226,10 @@ public partial class MainWindow
             _ => result.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", AecState.Maintenance => "Maintenance", _ => "Unknown" }
         };
         AecStateText.Foreground = AecStateStripe.Background = (Brush)FindResource(result.State == AecState.Unknown ? "MutedBrush" : "AccentBrush");
-        AecDetailText.Text = result.Detail;
-        AecCheckedText.Text = $"Checked {aecCheckedAt:HH:mm:ss} · {(demo ? "Simulated" : aecInstallation?.Path is not null ? "AEC status" : "No AEC interface")}";
+        // Like the Deep Freeze tab, the detail is shown only when it explains an unknown state.
+        AecDetailText.Text = result.State == AecState.Unknown ? result.Detail : "";
+        AecDetailText.Visibility = result.State == AecState.Unknown ? Visibility.Visible : Visibility.Collapsed;
+        AecCheckedText.Text = $"Checked {aecCheckedAt:HH:mm:ss}{(demo ? " · simulated" : "")}";
     }
 
     private bool AecBlocked(bool changing)

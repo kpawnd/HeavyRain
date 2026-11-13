@@ -333,6 +333,7 @@ await Check("Missing cache is never created and cancellation stops reads", () =>
 
 await AecChecks.RunAsync(Check);
 await AecDiagnosticChecks.RunAsync(Check);
+await AecInsightChecks.RunAsync(Check);
 await Check("Control transport closes stdin and preserves bounded stderr", async () =>
 {
     var input = await new CommandProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "stdin"]);

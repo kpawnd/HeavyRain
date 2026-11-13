@@ -13,6 +13,9 @@ public static class AecInstallationProbe
     {
         var candidates = new List<string>();
         var warnings = new List<string>();
+        // Anti-Executable can deny reads of its own service key, even to administrators. That only
+        // matters if AEC.exe then isn't found in the usual folders, so it's reported only in that case.
+        string? registrationNote = null;
         try
         {
             using var engine = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\AEEngine");
@@ -24,7 +27,10 @@ public static class AecInstallationProbe
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-        { warnings.Add("The Anti-Executable service registration could not be read."); }
+        {
+            registrationNote = "The Anti-Executable service registration could not be read.";
+            progress?.Invoke("The Anti-Executable service registration couldn't be read; checking the usual folders.");
+        }
         foreach (var root in new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 })
         foreach (var folder in new[] { "AE", "Anti-Executable", "AntiExecutable", "Anti-Executable Enterprise", "Faronics Anti-Executable" })
         {
@@ -51,6 +57,7 @@ public static class AecInstallationProbe
             { warnings.Add("AEC.exe version information could not be read."); }
         }
         progress?.Invoke("AEC.exe was not found in the checked locations.");
+        if (registrationNote is not null) warnings.Insert(0, registrationNote);
         return new(null, "Unavailable", warnings.ToArray());
     }
 }

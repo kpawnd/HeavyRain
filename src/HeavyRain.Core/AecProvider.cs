@@ -20,14 +20,21 @@ public interface IAecProviderReader
 public static class AecProvider
 {
     // The provider reports the Anti-Executable "Protection" feature as a numeric code in the
-    // 1100-1105 block. Only 1105 is confirmed: on Cloud Anti-Executable 6.11.2112.730 the provider
-    // reported Protection=1105 while the Faronics console showed the machine Protected and AEC.exe
-    // status still printed "Unprotected". The other codes in that block are not yet confirmed, so
-    // they are deliberately left unmapped rather than guessed. A confirmed mapping can therefore
-    // only ever rescue a false "Unprotected"; it never invents a protected-off state.
+    // 1100-1105 block. Three codes are confirmed on Cloud Anti-Executable 6.11.2112.730, each read
+    // while AE.log recorded the matching state change:
+    //   1105 - protected ("Protection enabled."). The Faronics console also showed the machine
+    //          Protected, while AEC.exe status printed "Unprotected".
+    //   1102 - Maintenance ("Maintenance mode enabled."), seen in two separate sessions, while
+    //          AEC.exe again printed "Unprotected".
+    //   1101 - protection off ("Protection disabled.", after "Maintenancemode disabled").
+    // StatusFlags changed in step with each code. The other codes in that block (1100, 1103,
+    // 1104) have not been observed, so they are deliberately left unmapped rather than guessed;
+    // the command-line verdict stands for them.
     public static AecState? MapProtection(int? code) => code switch
     {
         1105 => AecState.Enabled,
+        1102 => AecState.Maintenance,
+        1101 => AecState.Disabled,
         _ => null
     };
 
@@ -55,7 +62,11 @@ public static class AecProvider
             AecState.Disabled => "Anti-Executable execution protection is off. The Faronics provider reports protection off",
             _ => "Maintenance is active. The Faronics provider reports maintenance"
         };
-        var detail = commandLine.State == AecState.Unknown
+        // A rejected password must stay visible even though the provider supplies the state;
+        // otherwise a mistyped password would only surface when a change is refused.
+        var detail = commandLine.Diagnostic == AecDiagnostic.PasswordRejected
+            ? $"{reading}. AEC.exe did not accept the supplied Anti-Executable password; check it before making changes."
+            : commandLine.State == AecState.Unknown
             ? $"{reading}; the AEC.exe command line returned {observed}."
             : $"{reading}, overriding the AEC.exe command line, which reported {observed}.";
         return new(state, detail, commandLine.ExitCode);

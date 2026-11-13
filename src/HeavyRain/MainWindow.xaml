@@ -56,16 +56,18 @@
                                 <StackPanel Grid.Column="1" Margin="17,0,28,0">
                                     <TextBlock Text="Protection state" Style="{StaticResource Label}"/>
                                     <TextBlock x:Name="StateText" Text="Checking…" FontSize="46" FontWeight="Light" Margin="-2,-5,0,0"/>
-                                    <TextBlock x:Name="StateDetailText" Text="Looking for Deep Freeze." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,6,0,10"/>
-                                    <TextBlock x:Name="CheckedText" Text="Not queried yet" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBlock x:Name="StateDetailText" Visibility="Collapsed" Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    <TextBlock x:Name="CheckedText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
                                 </StackPanel>
                             </Grid>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="Cloud policy" Style="{StaticResource Label}"/>
                                 <TextBlock x:Name="PolicyNameText" Text="Checking…" FontSize="22" Foreground="{StaticResource AccentBrush}"/>
-                                <TextBlock x:Name="PolicySourceText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,18"/>
-                                <TextBlock Text="Deep Freeze version" Style="{StaticResource Label}"/>
-                                <TextBlock x:Name="VersionText" Text="Unavailable" FontSize="12"/>
+                                <TextBlock x:Name="PolicySourceText" Visibility="Collapsed" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                                <StackPanel Margin="0,18,0,0">
+                                    <TextBlock Text="Deep Freeze version" Style="{StaticResource Label}"/>
+                                    <TextBlock x:Name="VersionText" Text="Unavailable" FontSize="12"/>
+                                </StackPanel>
                             </StackPanel>
                         </Grid>
                         <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,22,0,0">
@@ -74,21 +76,17 @@
                                 <StackPanel>
                                     <TextBlock Text="Next restart" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="Deep Freeze password" Style="{StaticResource Label}"/>
-                                    <PasswordBox x:Name="PasswordInput" MaxLength="63" FontSize="16" PasswordChanged="Password_Changed" ToolTip="A Deep Freeze password with command-line rights." AutomationProperties.Name="Deep Freeze command-line password"/>
-                                    <TextBlock Text="Command-line rights required. Password is never saved." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,16"/>
+                                    <PasswordBox x:Name="PasswordInput" MaxLength="63" FontSize="16" PasswordChanged="Password_Changed" ToolTip="A Deep Freeze password with command-line rights." AutomationProperties.Name="Deep Freeze command-line password" Margin="0,0,0,16"/>
                                     <CheckBox x:Name="RestartCheck" Content="Restart immediately after confirmation" FontSize="12" Margin="0,0,0,18"/>
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                         <Button x:Name="FreezeButton" Content="Freeze PC" Style="{StaticResource PrimaryButton}" Click="Freeze_Click"/>
                                         <Button x:Name="ThawButton" Grid.Column="2" Content="Thaw PC" Click="Thaw_Click"/>
                                     </Grid>
-                                    <TextBlock x:Name="ControlHintText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
                                     <TextBlock Text="Last request" Style="{StaticResource SectionTitle}"/>
-                                    <TextBlock x:Name="PendingText" Text="No request in this session." FontSize="12"/>
-                                    <TextBlock Text="Existing next-boot settings aren't queried. Verify protection after restarting." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,10,0,16"/>
-                                    <TextBlock Text="Local changes may differ from the Cloud policy." Foreground="{StaticResource MutedBrush}" FontSize="11"/>
+                                    <TextBlock x:Name="PendingText" Text="None" FontSize="12" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -109,14 +107,20 @@
                                 <StackPanel Grid.Column="1" Margin="17,0,28,0">
                                     <TextBlock Text="Execution protection" Style="{StaticResource Label}"/>
                                     <TextBlock x:Name="AecStateText" Text="Checking…" FontSize="46" FontWeight="Light" Margin="-2,-5,0,0"/>
-                                    <TextBlock x:Name="AecDetailText" Text="Looking for Anti-Executable." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,6,0,10"/>
-                                    <TextBlock x:Name="AecCheckedText" Text="Not queried yet" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+                                    <TextBlock x:Name="AecDetailText" Visibility="Collapsed" Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                    <TextBlock x:Name="AecPolicyNoteText" Visibility="Collapsed" FontSize="12" Foreground="{StaticResource AccentBrush}" Margin="0,6,0,0"
+                                               Text="Unknown programs can still run."/>
+                                    <TextBlock x:Name="AecCheckedText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
                                 </StackPanel>
                             </Grid>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="Anti-Executable version" Style="{StaticResource Label}"/>
                                 <TextBlock x:Name="AecVersionText" Text="Unavailable" FontSize="22" Foreground="{StaticResource AccentBrush}"/>
-                                <TextBlock x:Name="AecVersionSourceText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"/>
+                                <StackPanel Margin="0,18,0,0">
+                                    <TextBlock Text="Policy" Style="{StaticResource Label}"/>
+                                    <TextBlock x:Name="AecPolicyText" Text="Checking…" FontSize="12" LineHeight="19"/>
+                                    <TextBlock x:Name="AecPolicySourceText" Visibility="Collapsed" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                                </StackPanel>
                             </StackPanel>
                         </Grid>
                         <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,22,0,0">
@@ -125,24 +129,68 @@
                                 <StackPanel>
                                     <TextBlock Text="Protection" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="Anti-Executable password" Style="{StaticResource Label}"/>
-                                    <PasswordBox x:Name="AecPasswordInput" MaxLength="255" FontSize="16" AutomationProperties.Name="Anti-Executable password"/>
-                                    <TextBlock Text="Use the AE password from your policy's User Settings if required. Cleared after each request; never saved." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
+                                    <PasswordBox x:Name="AecPasswordInput" MaxLength="255" FontSize="16" AutomationProperties.Name="Anti-Executable password" Margin="0,0,0,16"
+                                                 ToolTip="The AE password from your policy's User Settings, if one is set."/>
                                     <WrapPanel Margin="0,0,0,12">
                                         <Button x:Name="AecEnableButton" Content="Enable" Style="{StaticResource PrimaryButton}" Click="AecEnable_Click" Margin="0,0,10,8"/>
                                         <Button x:Name="AecDisableButton" Content="Disable" Click="AecDisable_Click" Margin="0,0,10,8"/>
                                         <Button x:Name="AecQueryButton" Content="Check status" Click="AecQuery_Click" Margin="0,0,0,8"/>
                                     </WrapPanel>
-                                    <TextBlock x:Name="AecPendingText" Text="No request in this session." Foreground="{StaticResource MutedBrush}" FontSize="12"/>
+                                    <TextBlock x:Name="AecPendingText" Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2">
                                     <TextBlock Text="Maintenance" Style="{StaticResource SectionTitle}"/>
-                                    <TextBlock Text="1 hour" FontSize="22" Foreground="{StaticResource AccentBrush}"/>
-                                    <TextBlock Text="Allows software changes and can add executables to the allowed list. Protection resumes when the period ends." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,8,0,14"/>
+                                    <TextBlock Text="1 hour" FontSize="22" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,14"/>
                                     <Button x:Name="AecMaintenanceButton" Content="Start maintenance" Click="AecMaintenance_Click" HorizontalAlignment="Left"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
-                        <TextBlock Text="Local changes may differ from the Cloud policy." FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,22,0,0"/>
+                        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,22,0,0" Margin="0,26,0,0">
+                            <StackPanel>
+                                <TextBlock Text="Recent activity" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock x:Name="AecActivitySourceText" Visibility="Collapsed" Foreground="{StaticResource MutedBrush}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <ListBox x:Name="AecActivityList" Height="230" Background="{StaticResource InsetBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                         Foreground="{StaticResource TextBrush}" SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         AutomationProperties.Name="Recent Anti-Executable activity">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="AutomationProperties.Name" Value="{Binding Summary}"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <Border x:Name="Row" Background="Transparent" BorderBrush="Transparent" BorderThickness="3,0,0,0" Padding="10,7">
+                                                            <ContentPresenter/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource PanelBrush}"/></Trigger>
+                                                            <Trigger Property="IsSelected" Value="True">
+                                                                <Setter TargetName="Row" Property="Background" Value="{StaticResource AccentSurfaceBrush}"/>
+                                                                <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid ToolTip="{Binding FullDetail}">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Time}" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0"/>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock FontSize="13" TextTrimming="CharacterEllipsis">
+                                                        <Run Text="{Binding Title, Mode=OneWay}"/><Run Text="{Binding Subject, Mode=OneWay}" Foreground="{StaticResource AccentBrush}"/>
+                                                    </TextBlock>
+                                                    <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <Button x:Name="AecAllowButton" Content="Allow selected file" Click="AecAllow_Click" HorizontalAlignment="Left" Margin="0,12,0,8"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -157,7 +205,6 @@
                         </WrapPanel>
                         <TextBlock Text="Installed components" Style="{StaticResource SectionTitle}"/>
                         <TextBlock x:Name="InstallationText" FontSize="13" LineHeight="22"/>
-                        <TextBlock Text="A registered Cloud agent or driver doesn't establish protection state. Heavy Rain queries DFC to check it." Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="0,18,0,0"/>
                         <Button Content="DFC documentation ↗" Click="Documentation_Click" HorizontalAlignment="Left" Margin="0,24,0,0"/>
                         <TextBlock Text="Anti-Executable interface" Style="{StaticResource SectionTitle}" Margin="0,30,0,14"/>
                         <TextBlock x:Name="AecPathText" Text="Searching…" FontFamily="Consolas" FontSize="13"/>

@@ -135,6 +135,35 @@ public sealed class AecClient(ICommandRunner runner, IAecDiagnosticReader? diagn
         return new(ChangeOutcome.Uncertain, $"{action} was requested but not verified after {checks} status {(checks == 1 ? "check" : "checks")}. {observed} Check status before retrying; the change command was sent only once.", verified, commandExitCode);
     }
 
+    /// <summary>
+    /// Adds one file to Anti-Executable's local allowed list with the documented
+    /// <c>AEC allow &lt;file&gt;</c> command. Sent once, never retried. AEC doesn't echo the list
+    /// back, so a successful exit is reported as accepted rather than verified.
+    /// </summary>
+    public async Task<AecChangeResult> AllowAsync(string path, string password, string filePath, CancellationToken cancellationToken = default)
+    {
+        if (!ValidPassword(password)) return new(ChangeOutcome.Rejected, "The Anti-Executable password contains unsupported control characters or is too long.");
+        if (!IsAllowablePath(filePath)) return new(ChangeOutcome.Rejected, "No change sent. Only a full local file path from the activity list can be allowed.");
+        if (cancellationToken.IsCancellationRequested) return new(ChangeOutcome.Rejected, "No change sent. The operation was cancelled.");
+
+        var result = await RunAsync(path, ["allow", filePath], password, cancellationToken);
+        if (result.TimedOut || result.Error is not null || result.ExitCode is null)
+            return new(ChangeOutcome.Uncertain, "The request may have taken effect, but its result could not be read. Check the allowed list in Anti-Executable before retrying.", ExitCode: result.ExitCode);
+        var failure = Failure(result, password.Length > 0);
+        if (result.ExitCode != 0 || failure is not null)
+            return new(ChangeOutcome.Rejected, failure ?? $"AEC rejected the request (exit {result.ExitCode}). Check the installed version and Anti-Executable permissions.", PasswordFailure(result, password.Length > 0), result.ExitCode);
+        var name = filePath[(filePath.LastIndexOf('\\') + 1)..];
+        return new(ChangeOutcome.Accepted, $"AEC accepted adding {name} to the allowed list. Heavy Rain doesn't read the list back, so this isn't independently verified.", ExitCode: result.ExitCode);
+    }
+
+    /// <summary>A full local or UNC file path with no quotes, control characters or parent-folder steps.</summary>
+    public static bool IsAllowablePath(string filePath) =>
+        filePath.Length is > 3 and < 1024
+        && !filePath.Any(c => char.IsControl(c) || c == '"')
+        && Regex.IsMatch(filePath, @"\A(?:[A-Za-z]:\\|\\\\[^\\]+\\[^\\]+\\)[^\\]", RegexOptions.CultureInvariant)
+        && !Regex.IsMatch(filePath, @"(?:\A|\\)\.\.(?:\\|\z)", RegexOptions.CultureInvariant)
+        && !filePath.EndsWith('\\');
+
     public static AecStatusResult ParseStatus(ProcessResult result, bool passwordSupplied = false)
     {
         if (result.TimedOut || result.Error is not null || result.ExitCode is null) return new(AecState.Unknown, result.TimedOut

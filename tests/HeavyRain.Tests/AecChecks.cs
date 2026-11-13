@@ -227,7 +227,7 @@ internal static class AecChecks
             Assert(await new AecClient(new FakeRunner(new ProcessResult(0, Output: output))).GetVersionAsync("AEC.exe") == expected, "Bad version");
         });
 
-        foreach (var (code, expected) in new (int?, AecState?)[] { (1105, AecState.Enabled), (1100, null), (1101, null), (1104, null), (null, null), (0, null), (2001, null) })
+        foreach (var (code, expected) in new (int?, AecState?)[] { (1105, AecState.Enabled), (1102, AecState.Maintenance), (1101, AecState.Disabled), (1100, null), (1103, null), (1104, null), (null, null), (0, null), (2001, null) })
         await check($"Provider protection code {code?.ToString() ?? "null"} maps only when confirmed", () =>
         {
             Assert(AecProvider.MapProtection(code) == expected, "Wrong protection mapping");
@@ -307,6 +307,77 @@ internal static class AecChecks
             var result = await new AecClient(runner, providerReader: provider).ChangeAsync("AEC.exe", "pw", AecAction.Enable);
             Assert(result.Outcome == ChangeOutcome.Accepted && result.Status?.State == AecState.Enabled, "Change not verified through the provider");
             Assert(runner.Calls.Count(call => call[0] == "protect") == 1, "Change was retried");
+        });
+
+        var maintenanceProvider = new AecProviderReading(1102, "Installed");
+        await check("Provider 1102 shows Maintenance when AEC says Unprotected", () =>
+        {
+            var reconciled = AecProvider.Reconcile(new(AecState.Disabled, "Anti-Executable execution protection is off.", 0), maintenanceProvider);
+            Assert(reconciled.State == AecState.Maintenance && reconciled.Detail.Contains("reports maintenance") && reconciled.Detail.Contains("overriding"), "Maintenance not recognized");
+            return Task.CompletedTask;
+        });
+
+        await check("Status without the AE password still shows Maintenance from the provider", async () =>
+        {
+            var prompt = new ProcessResult(0, Output: "Enter AE Administrator Password : \nInvalid AE Administrator Password");
+            var result = await new AecClient(new FakeRunner(prompt), providerReader: new FakeProviderReader(maintenanceProvider)).QueryAsync("AEC.exe");
+            Assert(result.State == AecState.Maintenance && result.Detail.Contains("command line returned"), "Provider maintenance not used when AEC wanted a password");
+        });
+
+        await check("Disable during provider-reported Maintenance needs confirmation instead of being skipped", async () =>
+        {
+            var runner = new FakeRunner(new ProcessResult(0, Output: "Unprotected"));
+            var result = await new AecClient(runner, providerReader: new FakeProviderReader(maintenanceProvider)).ChangeAsync("AEC.exe", "pw", AecAction.Disable);
+            Assert(result.Outcome == ChangeOutcome.Rejected && result.Detail.Contains("confirmation") && runner.Calls.Count == 1, "Maintenance was treated as already off or ended unconfirmed");
+        });
+
+        await check("Confirmed Disable during provider-reported Maintenance sends protect off /force once", async () =>
+        {
+            var runner = new FakeRunner(new(0, Output: "Unprotected"), new(0), new(0, Output: "Unprotected"));
+            var provider = new SequencedProviderReader(maintenanceProvider, null);
+            var result = await new AecClient(runner, providerReader: provider).ChangeAsync("AEC.exe", "pw", AecAction.Disable, allowMaintenanceDisable: true);
+            var changes = runner.Calls.Where(call => call[0] == "protect").ToList();
+            Assert(changes.Count == 1 && changes[0].SequenceEqual(new[] { "protect", "off", "/force", "/pw=pw" }), "Maintenance was not ended with /force");
+            Assert(result.Outcome == ChangeOutcome.Accepted && result.Status?.State == AecState.Disabled, "Disable not verified");
+        });
+
+        await check("Start maintenance verifies through the provider even if AEC says Unprotected", async () =>
+        {
+            var runner = new FakeRunner(new(0, Output: "Unprotected"), new(0), new(0, Output: "Unprotected"));
+            var provider = new SequencedProviderReader(enabledProvider, maintenanceProvider);
+            var result = await new AecClient(runner, providerReader: provider).ChangeAsync("AEC.exe", "pw", AecAction.Maintenance);
+            Assert(result.Outcome == ChangeOutcome.Accepted && result.Status?.State == AecState.Maintenance, "Maintenance not verified through the provider");
+            Assert(runner.Calls.Count(call => call[0] == "maintenance") == 1, "Maintenance was requested more than once");
+        });
+
+        var disabledProvider = new AecProviderReading(1101, "Installed");
+        await check("Status without the AE password shows Unprotected from provider 1101", async () =>
+        {
+            var prompt = new ProcessResult(0, Output: "Enter AE Administrator Password : \nInvalid AE Administrator Password");
+            var result = await new AecClient(new FakeRunner(prompt), providerReader: new FakeProviderReader(disabledProvider)).QueryAsync("AEC.exe");
+            Assert(result.State == AecState.Disabled && result.Detail.Contains("reports protection off"), "Provider 1101 not used when AEC wanted a password");
+        });
+
+        await check("Provider 1101 agreeing with AEC keeps the command-line detail", () =>
+        {
+            var cli = new AecStatusResult(AecState.Disabled, "Anti-Executable execution protection is off.", 0);
+            Assert(ReferenceEquals(AecProvider.Reconcile(cli, disabledProvider), cli), "Agreement rewrote the result");
+            return Task.CompletedTask;
+        });
+
+        foreach (var reading in new[] { enabledProvider, maintenanceProvider, disabledProvider })
+        await check($"A rejected password is still reported when provider {reading.Protection} supplies the state", async () =>
+        {
+            var rejected = new ProcessResult(0, Output: "Enter AE Administrator Password : \nInvalid AE Administrator Password");
+            var result = await new AecClient(new FakeRunner(rejected), providerReader: new FakeProviderReader(reading)).QueryAsync("AEC.exe", "wrong");
+            Assert(result.State == AecProvider.MapProtection(reading.Protection) && result.Detail.Contains("did not accept the supplied"), "Rejected password was hidden by the provider state");
+        });
+
+        await check("Start maintenance is not repeated while the provider reports it", async () =>
+        {
+            var runner = new FakeRunner(new ProcessResult(0, Output: "Unprotected"));
+            var result = await new AecClient(runner, providerReader: new FakeProviderReader(maintenanceProvider)).ChangeAsync("AEC.exe", "pw", AecAction.Maintenance);
+            Assert(result.Outcome == ChangeOutcome.NotNeeded && runner.Calls.Count == 1, "Maintenance was requested while already active");
         });
 
         await check("Provider reader runs a read-only CIM query and parses its JSON", async () =>
