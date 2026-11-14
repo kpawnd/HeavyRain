@@ -36,7 +36,8 @@ public partial class MainWindow : MetroWindow
         InitializeComponent();
         client = new DfcClient(demo ? new DemoRunner() : new CommandProcessRunner());
         aecClient = new AecClient(demo ? new AecDemoRunner() : new CommandProcessRunner(), demo ? null : new AecDiagnosticProbe(), demo ? null : CreateAecProviderReader());
-        MachineNameText.Text = Environment.MachineName;
+        // The demo shows a sample name, so screenshots of it don't carry the real computer's name.
+        MachineNameText.Text = demo ? "LAB-PC-07" : Environment.MachineName;
         DemoBanner.Visibility = demo ? Visibility.Visible : Visibility.Collapsed;
         timer.Tick += async (_, _) => { if (!busy && WindowState != WindowState.Minimized) await RefreshAsync(false); };
         StateChanged += async (_, _) => { if (timer.IsEnabled && WindowState != WindowState.Minimized && !busy) await RefreshAsync(false); };
@@ -117,14 +118,20 @@ public partial class MainWindow : MetroWindow
                 reportProgress?.Invoke(demo ? "Loading the sample version…" : installation.DfcPath is not null
                     ? "Running DFC.exe get /VERSION…" : "Skipping the version query: DFC.exe is unavailable.");
                 deepFreezeVersion = installation.DfcPath is { } versionPath ? await client.GetVersionAsync(versionPath, lifetime.Token) : "Unavailable";
+                if (installation.DfcPath is not null) reportProgress?.Invoke(demo ? "Loading the sample licence…" : "Running DFC.exe get /LICENSETYPE and /LICENSESTATUS…");
+                license = installation.DfcPath is { } licensePath ? await client.GetLicenseAsync(licensePath, lifetime.Token) : null;
+                RenderLicense();
+                reportProgress?.Invoke(license is null ? "Licence: not reported by DFC." : $"Licence: {license.Describe(DateOnly.FromDateTime(DateTime.Today))}.");
                 metadataCheckedAt = DateTimeOffset.UtcNow;
             }
             lifetime.Token.ThrowIfCancellationRequested();
             reportProgress?.Invoke($"Deep Freeze version: {deepFreezeVersion}.");
-            VersionText.Text = deepFreezeVersion + (installation.DfcFileVersion is not "Unavailable" and not "Demo" ? $"\nDFC file: {installation.DfcFileVersion}" : "");
+            VersionText.Text = deepFreezeVersion;
+            VersionText.ToolTip = installation.DfcFileVersion is not "Unavailable" and not "Demo" ? $"DFC.exe file version {installation.DfcFileVersion}" : null;
             checkedAt = DateTimeOffset.Now;
             RenderStatus();
             if (log || previous != status.State) Log($"Status: {status.State}. {status.Detail}" + (status.ExitCode is { } code ? $" (DFC {code})" : ""));
+            await RefreshInsightsAsync(reportProgress);
             await aecTask;
             reportProgress?.Invoke("Ready.");
         }
@@ -143,11 +150,32 @@ public partial class MainWindow : MetroWindow
     private void RenderStatus()
     {
         StateText.Text = status.State.ToString();
-        StateText.Foreground = StateStripe.Background = (Brush)FindResource(status.State == ProtectionState.Unknown ? "MutedBrush" : "AccentBrush");
+        var tone = status.State switch { ProtectionState.Frozen => "AccentBrush", ProtectionState.Thawed => "WarningBrush", _ => "MutedBrush" };
+        StateText.SetResourceReference(ForegroundProperty, tone);
+        StateStripe.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, tone);
         // The detail only earns its space when it explains why the state is unknown.
         StateDetailText.Text = status.State == ProtectionState.Unknown ? status.Detail : "";
         StateDetailText.Visibility = status.State == ProtectionState.Unknown ? Visibility.Visible : Visibility.Collapsed;
         CheckedText.Text = $"Checked {checkedAt:HH:mm:ss}{(demo ? " · simulated" : "")}";
+        // DFC can only switch to the opposite state, so offer just that action and highlight it.
+        // When the state is unknown both stay available; the action then explains why it can't run.
+        SetAction(ThawButton, status.State != ProtectionState.Thawed, primary: status.State == ProtectionState.Frozen);
+        SetAction(FreezeButton, status.State != ProtectionState.Frozen, primary: status.State == ProtectionState.Thawed);
+        RenderStateNote();
+        RenderPending();
+    }
+
+    private void SetAction(System.Windows.Controls.Button button, bool visible, bool primary)
+    {
+        button.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        button.SetResourceReference(StyleProperty, primary ? "PrimaryButton" : typeof(System.Windows.Controls.Button));
+    }
+
+    /// <summary>This session's request, shown only when Deep Freeze's own records can't be read.</summary>
+    private void SetLastRequest(string text)
+    {
+        sessionRequest = text;
+        RenderPending();
     }
 
     private void SetBusy(bool value)
@@ -155,7 +183,7 @@ public partial class MainWindow : MetroWindow
         busy = value;
         SetActivity(value);
         RefreshButton.IsEnabled = BrowseButton.IsEnabled = DetectButton.IsEnabled = ExportButton.IsEnabled = !value;
-        PasswordInput.IsEnabled = RestartCheck.IsEnabled = !value;
+        PasswordInput.IsEnabled = RestartSwitch.IsEnabled = !value;
         AecPasswordInput.IsEnabled = AecBrowseButton.IsEnabled = AecDetectButton.IsEnabled = !value;
         UpdateControls();
     }
@@ -183,15 +211,17 @@ public partial class MainWindow : MetroWindow
             return;
         }
         var path = installation!.DfcPath!;
-        var restart = RestartCheck.IsChecked == true;
-        var targetName = target.ToString().ToLowerInvariant();
+        var restart = RestartSwitch.IsOn;
+        var thaw = target == BootTarget.Thawed;
         var message = $"Computer: {Environment.MachineName}{(demo ? " (DEMO)" : "")}\n\n" +
-            (restart ? $"Request a restart into the {targetName} state now? Save all open work first.\n\n" : $"Request the {targetName} state for the next restart? This does not restart the PC now.\n\n") +
-            (status.State == ProtectionState.Frozen ? "Restarting while frozen can discard changes on protected drives.\n\n" : "Freezing will protect the computer's current contents after restart.\n\n") +
-            "The Deep Freeze command-line password is required. Cloud policy may need to be reapplied afterward.";
+            (thaw
+                ? (restart ? "Restart now into the Thawed state? It stays Thawed until you freeze it. Save all open work first; this restart discards unsaved changes on frozen drives."
+                           : "Thaw at the next restart? It stays Thawed until you freeze it. This doesn't restart the PC now.")
+                : (restart ? "Restart now into the Frozen state? Save all open work first."
+                           : "Freeze at the next restart? This doesn't restart the PC now. Freezing protects the PC's contents as they are at that restart."));
         timer.Stop();
         SetBusy(true);
-        var confirmation = await this.ShowMessageAsync(restart ? "Restart and change protection?" : "Change the next boot?",
+        var confirmation = await this.ShowMessageAsync(thaw ? (restart ? "Restart thawed?" : "Thaw at next restart?") : restart ? "Restart frozen?" : "Freeze at next restart?",
             message, MessageDialogStyle.AffirmativeAndNegative, new MetroDialogSettings
             {
                 AffirmativeButtonText = restart ? "Confirm restart" : "Confirm change",
@@ -209,28 +239,27 @@ public partial class MainWindow : MetroWindow
             var result = await client.ChangeAsync(path, password, target, restart, lifetime.Token);
             password = string.Empty;
             commandUncertain = result.Outcome == ChangeOutcome.Uncertain;
-            ResultBanner.Visibility = Visibility.Visible;
-            ResultText.Text = result.Detail;
             Log($"{target} {(restart ? "and restart" : "next boot")}: {result.Outcome}. {result.Detail}");
+            // Successes show in Last request; problems show once, in a dialog, not also on the page.
             if (result.Outcome == ChangeOutcome.Accepted)
-                PendingText.Text = $"{target}{(restart ? ", restarting now" : " at next restart")} · {DateTime.Now:HH:mm:ss}{(demo ? " (demo)" : "")}";
+                SetLastRequest((thaw ? "Thawed" : "Frozen") + (restart ? ", restarting now" : " from next restart") + $" · {DateTime.Now:HH:mm:ss}{(demo ? " (demo)" : "")}");
+            if (result.RestartFailed)
+                new ActionNoticeWindow(new("Restart the PC to apply the change", result.Detail)) { Owner = this }.ShowDialog();
             else if (result.Outcome == ChangeOutcome.Uncertain)
-                PendingText.Text = $"{target} · outcome unknown · {DateTime.Now:HH:mm:ss}";
+                SetLastRequest($"{target} · outcome unknown · {DateTime.Now:HH:mm:ss}");
             if (result.Outcome is ChangeOutcome.Rejected or ChangeOutcome.Uncertain or ChangeOutcome.NotNeeded)
-                new ActionNoticeWindow(new("The change could not be completed", result.Detail)) { Owner = this }.ShowDialog();
+                new ActionNoticeWindow(new(result.Outcome == ChangeOutcome.Rejected ? "Deep Freeze didn't accept the request" : "The change could not be completed", result.Detail)) { Owner = this }.ShowDialog();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             commandUncertain = true;
-            ResultBanner.Visibility = Visibility.Visible;
-            ResultText.Text = "The request could not be confirmed. Check Deep Freeze before retrying; it may already have applied the change.";
-            PendingText.Text = $"{target} · outcome unknown · {DateTime.Now:HH:mm:ss}";
+            SetLastRequest($"{target} · outcome unknown · {DateTime.Now:HH:mm:ss}");
             Log($"Change outcome unknown ({ex.GetType().Name}).");
-            new ActionNoticeWindow(new("The result could not be confirmed", ResultText.Text)) { Owner = this }.ShowDialog();
+            new ActionNoticeWindow(new("The result could not be confirmed", "Check Deep Freeze before retrying; it may already have applied the change.")) { Owner = this }.ShowDialog();
         }
         finally
         {
-            password = string.Empty; PasswordInput.Clear(); RestartCheck.IsChecked = false; SetBusy(false);
+            password = string.Empty; PasswordInput.Clear(); RestartSwitch.IsOn = false; SetBusy(false);
             if (!lifetime.IsCancellationRequested) timer.Start();
         }
         await RefreshAsync(false);
@@ -258,11 +287,19 @@ public partial class MainWindow : MetroWindow
         if (dialog.ShowDialog(this) != true) return;
         var report = new
         {
-            schemaVersion = 2, demo, computer = Environment.MachineName, os = Environment.OSVersion.VersionString,
+            schemaVersion = 3, demo, computer = Environment.MachineName, os = Environment.OSVersion.VersionString,
             administrator = admin, checkedAt, state = status.State.ToString(), status.Detail, status.ExitCode,
-            deepFreezeVersion, installation, policy, sessionBootRequest = PendingText.Text,
+            deepFreezeVersion, installation, policy, sessionBootRequest = sessionRequest, license,
+            deepFreeze = insights is null ? null : new
+            {
+                pending = pendingBoot, thawed = thawedRun, lastBoot = insights.LastBoot,
+                history = DeepFreezeHistory.Timeline(insights.Entries, HistoryLimit),
+                schedules = insights.Policy?.Schedules, checkInMinutes = insights.Policy?.CheckInMinutes, persistEventLogs = insights.Policy?.PersistEventLogs,
+                policyLastModified = insights.Policy?.LastModified, components = insights.Components,
+                problems = new[] { insights.EventProblem, insights.CloudProblem, insights.ComponentProblem }.Where(problem => problem is not null)
+            },
             antiExecutable = new { state = aecStatus.State.ToString(), aecStatus.Detail, aecStatus.ExitCode, diagnostic = aecStatus.Diagnostic.ToString(), checkedAt = aecCheckedAt, version = aecVersion, installation = aecInstallation, uncertain = aecUncertain, sessionRequest = AecPendingText.Text, policy = aecPolicyInfo?.Policy },
-            note = "Registry evidence does not establish protection state. Next-boot settings are not queried. Passwords and raw command output are excluded.",
+            note = "Registry evidence does not establish protection state. The pending change comes from Deep Freeze's event log. Passwords, raw command output, Cloud task bodies and the raw policy cache are excluded.",
             activity = activity.ToArray()
         };
         try

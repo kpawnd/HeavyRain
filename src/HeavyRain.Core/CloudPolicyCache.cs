@@ -81,6 +81,21 @@ public static class CloudPolicyCache
         }
     }
 
+    /// <summary>
+    /// The non-secret settings Heavy Rain shows from the cached policy (schedules, check-in interval,
+    /// Anti-Executable user lists), or null when the cache can't be read or holds no single policy.
+    /// The policy XML itself is parsed and dropped; it is never returned or stored.
+    /// </summary>
+    public static CloudPolicyDetails? ReadDetails(string path, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var rows = WinSqlite.Query(path, "SELECT Value FROM CoreInfo WHERE Key='CURRENT_PRODUCTS_POLICY' LIMIT 2", 2, MaximumXmlLength, cancellationToken);
+            return rows.Count == 1 && rows[0]["Value"] is { } xml ? CloudPolicyParser.Parse(xml) : null;
+        }
+        catch (WinSqlite.SqliteReadException) { return null; }
+    }
+
     private static byte[] Utf8(string value) => Encoding.UTF8.GetBytes(value + '\0');
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int ProgressCallback(IntPtr context);
