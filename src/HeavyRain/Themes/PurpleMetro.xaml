@@ -17,6 +17,9 @@
     <SolidColorBrush x:Key="AccentBrush" Color="#B79AE5"/>
     <SolidColorBrush x:Key="AccentStrongBrush" Color="#7949BA"/>
     <SolidColorBrush x:Key="AccentSurfaceBrush" Color="#28212F"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="#E3B565"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="#E9828A"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="#8FCB9B"/>
 
     <SolidColorBrush x:Key="MahApps.Brushes.Accent" Color="#A87FE0"/>
     <SolidColorBrush x:Key="MahApps.Brushes.Highlight" Color="#B79AE5"/>
@@ -72,6 +75,59 @@
         <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}"/>
         <Setter Property="Padding" Value="10"/>
         <Setter Property="MinHeight" Value="42"/>
+    </Style>
+    <!-- Pivot-style tab headers for the MahApps animated tab controls. -->
+    <Style x:Key="PivotTab" TargetType="TabItem">
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="FontSize" Value="25"/>
+        <Setter Property="FontWeight" Value="Light"/>
+        <Setter Property="Padding" Value="0,0,26,12"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <TextBlock Text="{TemplateBinding Header}" Foreground="{TemplateBinding Foreground}" FontWeight="{TemplateBinding FontWeight}" FontSize="{TemplateBinding FontSize}" TextWrapping="NoWrap"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True"><Setter Property="Foreground" Value="{StaticResource AccentBrush}"/></Trigger>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource TextBrush}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="SubPivotTab" TargetType="TabItem" BasedOn="{StaticResource PivotTab}">
+        <Setter Property="FontSize" Value="17"/>
+        <Setter Property="Padding" Value="0,0,20,10"/>
+    </Style>
+    <Style TargetType="metro:ToggleSwitch" BasedOn="{StaticResource MahApps.Styles.ToggleSwitch}">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style x:Key="ActivityList" TargetType="ListBox" BasedOn="{StaticResource MahApps.Styles.ListBox}">
+        <Setter Property="Background" Value="{StaticResource InsetBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+    </Style>
+    <Style x:Key="ActivityListItem" TargetType="ListBoxItem">
+        <Setter Property="AutomationProperties.Name" Value="{Binding Summary}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Row" Background="Transparent" BorderBrush="Transparent" BorderThickness="3,0,0,0" Padding="10,7">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="{StaticResource PanelBrush}"/></Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{StaticResource AccentSurfaceBrush}"/>
+                            <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
     <Style TargetType="TextBox" BasedOn="{StaticResource MahApps.Styles.TextBox}">
         <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>

@@ -42,16 +42,66 @@ await Check("Uncertain status never reports frozen or thawed", async () =>
     Assert((await new DfcClient(new FakeRunner(processResult)).QueryAsync("DFC.exe")).State == ProtectionState.Unknown, "False status"));
 
 foreach (var (target, restart, command, initial) in new[] {
-    (BootTarget.Frozen, false, "/FREEZENEXTBOOT", 0), (BootTarget.Thawed, false, "/THAWNEXTBOOT", 1),
-    (BootTarget.Frozen, true, "/BOOTFROZEN", 0), (BootTarget.Thawed, true, "/BOOTTHAWED", 1) })
+    (BootTarget.Frozen, false, "/FREEZENEXTBOOT", 0), (BootTarget.Thawed, false, "/THAWNEXTBOOT", 1) })
 await Check($"Correct transition {command} with fresh preflight", async () =>
 {
     var runner = new FakeRunner(new(initial), new(0));
-    var result = await new DfcClient(runner).ChangeAsync("DFC.exe", "example secret", target, restart);
+    var result = await new DfcClient(runner, "shutdown.exe").ChangeAsync("DFC.exe", "example secret", target, restart);
     Assert(result.Outcome == ChangeOutcome.Accepted, "Change not accepted");
     Assert(runner.Calls.Count == 2 && runner.Calls[0][1] == "/ISFROZEN", "Preflight missing");
     Assert(runner.Calls[1].SequenceEqual(new[] { "example secret", command }), "Wrong arguments");
     Assert(!result.Detail.Contains("example secret"), "Password leaked");
+});
+
+foreach (var (target, restart, initial) in new[] { (BootTarget.Frozen, false, 0), (BootTarget.Frozen, true, 0), (BootTarget.Thawed, false, 1), (BootTarget.Thawed, true, 1) })
+await Check($"{target}{(restart ? " with restart" : "")} never uses DFC's restart commands", async () =>
+{
+    var runner = new FakeRunner(new(initial), new(0), new(0));
+    await new DfcClient(runner, "shutdown.exe").ChangeAsync("DFC.exe", "example secret", target, restart);
+    Assert(runner.Calls.All(call => !call.Contains("/BOOTFROZEN") && !call.Contains("/BOOTTHAWED")), "A DFC restart command was sent");
+    Assert(runner.Calls[1][1] == (target == BootTarget.Thawed ? "/THAWNEXTBOOT" : "/FREEZENEXTBOOT"), "Wrong next-boot command");
+    Assert(runner.Calls.Count == (restart ? 3 : 2), "Windows restart missing or unexpected");
+});
+
+await Check("Freeze with restart sends /FREEZENEXTBOOT, then restarts Windows once", async () =>
+{
+    var runner = new FakeRunner(new(0), new(0), new(0));
+    var result = await new DfcClient(runner, "shutdown.exe").ChangeAsync("DFC.exe", "example secret", BootTarget.Frozen, true);
+    Assert(result is { Outcome: ChangeOutcome.Accepted, RestartFailed: false } && result.Detail.Contains("boots Frozen"), "Freeze restart not reported");
+    Assert(runner.Calls[2].SequenceEqual(new[] { "/r", "/t", "0" }), "Wrong restart command");
+});
+
+await Check("Thaw uses /THAWNEXTBOOT and says it lasts until frozen", async () =>
+{
+    var runner = new FakeRunner(new(1), new(0));
+    var result = await new DfcClient(runner, "shutdown.exe").ChangeAsync("DFC.exe", "example secret", BootTarget.Thawed, false);
+    Assert(result.Outcome == ChangeOutcome.Accepted && result.Detail.Contains("stays Thawed until you freeze it") && !result.Detail.Contains("Frozen again"), "Thaw promised a refreeze DFC doesn't do");
+    Assert(runner.Calls.All(call => !call.Contains("/BOOTTHAWED")), "DFC restart command sent");
+});
+
+await Check("Thaw with restart sends /THAWNEXTBOOT, then restarts Windows once", async () =>
+{
+    var runner = new FakeRunner(new(1), new(0), new(0));
+    var result = await new DfcClient(runner, "shutdown.exe").ChangeAsync("DFC.exe", "example secret", BootTarget.Thawed, true);
+    Assert(result is { Outcome: ChangeOutcome.Accepted, RestartFailed: false }, "Restart not reported");
+    Assert(runner.Calls.Count == 3 && runner.Calls[1].SequenceEqual(new[] { "example secret", "/THAWNEXTBOOT" }), "Wrong Deep Freeze command");
+    Assert(runner.Calls[2].SequenceEqual(new[] { "/r", "/t", "0" }) && !runner.Calls[2].Contains("example secret"), "Wrong restart command");
+    Assert(runner.Calls.All(call => !call.Contains("/BOOTTHAWED")), "Permanent thaw sent");
+});
+
+foreach (var restartResult in new[] { new ProcessResult(1), new ProcessResult(null, TimedOut: true), new ProcessResult(null, Error: "denied") })
+await Check("A thaw whose Windows restart fails is still accepted, and says to restart manually", async () =>
+{
+    var runner = new FakeRunner(new(1), new(0), restartResult);
+    var result = await new DfcClient(runner, "shutdown.exe").ChangeAsync("DFC.exe", "example secret", BootTarget.Thawed, true);
+    Assert(result is { Outcome: ChangeOutcome.Accepted, RestartFailed: true } && result.Detail.Contains("Restart the PC yourself"), "Failed restart hidden");
+});
+
+await Check("A thaw that Deep Freeze rejects never restarts Windows", async () =>
+{
+    var runner = new FakeRunner(new(1), new(5));
+    var result = await new DfcClient(runner, "shutdown.exe").ChangeAsync("DFC.exe", "example secret", BootTarget.Thawed, true);
+    Assert(result.Outcome == ChangeOutcome.Rejected && runner.Calls.Count == 2, "Restarted after a rejected thaw");
 });
 
 foreach (var password in new[] { "", new string('x', 64), "line\nbreak", "nul\0char" })
@@ -60,6 +110,35 @@ await Check("Invalid password never starts a process", async () =>
     var runner = new FakeRunner();
     var result = await new DfcClient(runner).ChangeAsync("DFC.exe", password, BootTarget.Frozen, false);
     Assert(result.Outcome == ChangeOutcome.Rejected && runner.Calls.Count == 0, "Invalid request executed");
+});
+
+foreach (var code in new[] { 5, 9 })
+await Check($"A change rejected with DFC error {code} points to the Command Line password", async () =>
+{
+    var runner = new FakeRunner(new(1), new(code));
+    var result = await new DfcClient(runner).ChangeAsync("DFC.exe", "example secret", BootTarget.Thawed, false);
+    Assert(result.Outcome == ChangeOutcome.Rejected && result.ExitCode == code, "Failure not rejected");
+    Assert(result.Detail.Contains("Command Line password") && result.Detail.Contains($"error {code}") && !result.Detail.Contains("example secret"), "Password cause missing or secret echoed");
+    Assert(runner.Calls.Count == 2, "Change was retried");
+});
+
+await Check("A failed change quotes DFC's own output with the password blanked out", async () =>
+{
+    var runner = new FakeRunner(new(1), new(5, Output: "Error:   bad request for example secret\r\n", StandardError: "details"));
+    var result = await new DfcClient(runner).ChangeAsync("DFC.exe", "example secret", BootTarget.Thawed, false);
+    Assert(result.Detail.Contains("DFC said: \"Error: bad request for ••• details\"") && !result.Detail.Contains("example secret"), "Output not quoted or password leaked: " + result.Detail);
+});
+
+await Check("A failed change with no DFC output says so", async () =>
+{
+    var result = await new DfcClient(new FakeRunner(new(1), new(5))).ChangeAsync("DFC.exe", "example secret", BootTarget.Thawed, false);
+    Assert(result.Detail.EndsWith("DFC printed nothing."), "Empty output not reported");
+});
+
+await Check("A status query failing with error 5 keeps the generic explanation", async () =>
+{
+    var result = await new DfcClient(new FakeRunner(new ProcessResult(5))).QueryAsync("DFC.exe");
+    Assert(result.State == ProtectionState.Unknown && result.Detail.Contains("internal error 5") && !result.Detail.Contains("Command Line password"), "Query blamed a password it never used");
 });
 
 await Check("63-character password is supported", async () =>
@@ -334,6 +413,7 @@ await Check("Missing cache is never created and cancellation stops reads", () =>
 await AecChecks.RunAsync(Check);
 await AecDiagnosticChecks.RunAsync(Check);
 await AecInsightChecks.RunAsync(Check);
+await HistoryChecks.RunAsync(Check);
 await Check("Control transport closes stdin and preserves bounded stderr", async () =>
 {
     var input = await new CommandProcessRunner().RunAsync(dotnet, [assembly, "--fixture", "stdin"]);

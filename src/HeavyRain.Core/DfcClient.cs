@@ -6,15 +6,18 @@ public enum ChangeOutcome { Accepted, Rejected, Uncertain, NotNeeded }
 
 public sealed record ProcessResult(int? ExitCode, bool TimedOut = false, string Output = "", string? Error = null, string StandardError = "");
 public sealed record StatusResult(ProtectionState State, string Detail, int? ExitCode);
-public sealed record ChangeResult(ChangeOutcome Outcome, string Detail, int? ExitCode = null);
+/// <param name="RestartFailed">Deep Freeze accepted the change but Windows didn't start the requested restart.</param>
+public sealed record ChangeResult(ChangeOutcome Outcome, string Detail, int? ExitCode = null, bool RestartFailed = false);
 
 public interface ICommandRunner
 {
     Task<ProcessResult> RunAsync(string executable, IReadOnlyList<string> arguments, CancellationToken cancellationToken = default);
 }
 
-public sealed class DfcClient(ICommandRunner runner)
+public sealed class DfcClient(ICommandRunner runner, string? restartExecutable = null)
 {
+    private readonly string restartPath = restartExecutable ?? Path.Combine(Environment.SystemDirectory, "shutdown.exe");
+
     public async Task<StatusResult> QueryAsync(string path, CancellationToken cancellationToken = default)
     {
         var result = await runner.RunAsync(path, ["get", "/ISFROZEN"], cancellationToken);
@@ -36,6 +39,18 @@ public sealed class DfcClient(ICommandRunner runner)
         return match.Success ? match.Value : "Not returned by DFC";
     }
 
+    /// <summary>
+    /// The licence type, status and expiry from <c>DFC get /LICENSETYPE</c> and <c>get /LICENSESTATUS</c>,
+    /// read-only queries that need no password. Null when DFC reports neither.
+    /// </summary>
+    public async Task<DfLicense?> GetLicenseAsync(string path, CancellationToken cancellationToken = default)
+    {
+        var type = await runner.RunAsync(path, ["get", "/LICENSETYPE"], cancellationToken);
+        var status = await runner.RunAsync(path, ["get", "/LICENSESTATUS"], cancellationToken);
+        string? Usable(ProcessResult result) => result is { TimedOut: false, Error: null, ExitCode: 0 } ? result.Output : null;
+        return DfLicense.Parse(Usable(type), Usable(status));
+    }
+
     public async Task<ChangeResult> ChangeAsync(string path, string password, BootTarget target, bool restartNow,
         CancellationToken cancellationToken = default)
     {
@@ -50,24 +65,58 @@ public sealed class DfcClient(ICommandRunner runner)
             (target == BootTarget.Thawed && current.State == ProtectionState.Thawed))
             return new(ChangeOutcome.NotNeeded, "No change sent: the computer is already in that state. DFC only supports a transition from the opposite current state; this does not verify or cancel an earlier next-boot request.");
 
-        string command = (target, restartNow) switch
-        {
-            (BootTarget.Frozen, false) => "/FREEZENEXTBOOT",
-            (BootTarget.Thawed, false) => "/THAWNEXTBOOT",
-            (BootTarget.Frozen, true) => "/BOOTFROZEN",
-            (BootTarget.Thawed, true) => "/BOOTTHAWED",
-            _ => throw new ArgumentOutOfRangeException(nameof(target))
-        };
+        // Only DFC's next-boot commands are used, and both return straight away. /THAWNEXTBOOT thaws from
+        // the next restart until the PC is frozen again: on Deep Freeze 9.00.520.5760 three restarts in a
+        // row came back Thawed, although Deep Freeze's dialog showed "Boot Thawed on next 1 restarts"
+        // before the first. DFC has no thaw-for-one-restart command. /FREEZENEXTBOOT is "Boot Frozen".
+        // DFC's restart commands (/BOOTTHAWED, /BOOTFROZEN) are avoided: they keep DFC running while
+        // Windows restarts, and /BOOTFROZEN was seen setting Frozen, outliving the command timeout and
+        // being killed before any restart. To restart now, Heavy Rain restarts Windows itself once
+        // Deep Freeze has accepted the next-boot state.
+        var command = target == BootTarget.Thawed ? "/THAWNEXTBOOT" : "/FREEZENEXTBOOT";
         var result = await runner.RunAsync(path, [password, command], cancellationToken);
         if (result.TimedOut || result.Error is not null || result.ExitCode is null)
             return new(ChangeOutcome.Uncertain,
                 "Command outcome is unknown. It may already have been applied. Check Deep Freeze before retrying. " + DescribeFailure(result), result.ExitCode);
-        return result.ExitCode == 0
-            ? new(ChangeOutcome.Accepted, restartNow
-                ? $"DFC accepted the request to restart {target.ToString().ToLowerInvariant()}. Confirm the current state after the restart."
-                : $"DFC accepted {target.ToString().ToLowerInvariant()} for the next boot. The current protection state has not changed. Next-boot configuration is not independently queried.", 0)
-            : new(ChangeOutcome.Rejected, "DFC did not report success. " + DescribeFailure(result), result.ExitCode);
+        if (result.ExitCode != 0)
+            return new(ChangeOutcome.Rejected, DescribeChangeFailure(result) + QuoteOutput(result, password), result.ExitCode);
+
+        var outcome = target == BootTarget.Thawed
+            ? "the next restart boots Thawed, and it stays Thawed until you freeze it"
+            : "the next restart boots Frozen";
+        if (!restartNow)
+            return new(ChangeOutcome.Accepted, char.ToUpperInvariant(outcome[0]) + outcome[1..] + ".", 0);
+
+        var restart = await runner.RunAsync(restartPath, ["/r", "/t", "0"], cancellationToken);
+        var restarting = !restart.TimedOut && restart.Error is null && restart.ExitCode == 0;
+        return restarting
+            ? new(ChangeOutcome.Accepted, $"Deep Freeze accepted the change and Windows is restarting: {outcome}.", 0)
+            : new(ChangeOutcome.Accepted, $"Deep Freeze accepted the change, but Windows didn't start the restart. Restart the PC yourself: {outcome}.", 0, RestartFailed: true);
     }
+
+    /// <summary>
+    /// What DFC printed, as a short quote, so a failure shows DFC's own reason rather than only its
+    /// exit code. Any occurrence of the password is blanked out first.
+    /// </summary>
+    public static string QuoteOutput(ProcessResult result, string password)
+    {
+        var text = $"{result.Output} {result.StandardError}";
+        if (password.Length > 0) text = text.Replace(password, "•••", StringComparison.Ordinal);
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+        if (text.Length == 0) return " DFC printed nothing.";
+        if (text.Length > 300) text = text[..300] + "…";
+        return $" DFC said: \"{text}\"";
+    }
+
+    /// <summary>
+    /// DFC has no separate wrong-password code: a password it won't accept for commands comes back
+    /// as a generic internal error (5 or above). Faronics documents that DFC only accepts a
+    /// "Command Line" type password and doesn't work unless the policy defines one, so a failed
+    /// change names that as the likely cause.
+    /// </summary>
+    public static string DescribeChangeFailure(ProcessResult result) => result.ExitCode is >= 5
+        ? $"DFC returned error {result.ExitCode}, its general error code. A common cause is the password: DFC only accepts a Command Line password from the policy's Password tab, not the Workstation password used in Deep Freeze's own dialog, and works only if the policy defines one."
+        : "DFC did not report success. " + DescribeFailure(result);
 
     public static string DescribeFailure(ProcessResult result) => result switch
     {

@@ -171,15 +171,21 @@ public partial class MainWindow
         }.Where(line => line is not null));
         SetBusy(true);
         timer.Stop();
-        var password = AecPasswordInput.Password;
-        AecPasswordInput.Clear();
+        var password = string.Empty;
         try
         {
-            var confirmation = await this.ShowMessageAsync("Allow this file?",
-                $"Computer: {Environment.MachineName}{(demo ? " (DEMO)" : "")}\n\n{file}\n{details}\n\nAnti-Executable will add it to the local allowed list, so it can run even when unknown programs are blocked. Only allow files you trust.\n\nLocal changes may differ from the Cloud policy.",
-                MessageDialogStyle.AffirmativeAndNegative, new MetroDialogSettings
-                { AffirmativeButtonText = "Allow file", NegativeButtonText = "Cancel", DefaultButtonFocus = MessageDialogResult.Negative });
-            if (confirmation != MessageDialogResult.Affirmative || lifetime.IsCancellationRequested) return;
+            // One MahApps dialog both confirms the file and takes the AE password, since this
+            // runs from the activity tab, away from the Anti-Executable password box.
+            var login = await this.ShowLoginAsync("Allow this file?",
+                $"Computer: {Environment.MachineName}{(demo ? " (DEMO)" : "")}\n\n{file}\n{details}\n\nAnti-Executable will add it to the local allowed list, so it can run even when unknown programs are blocked. Only allow files you trust.",
+                new LoginDialogSettings
+                {
+                    ShouldHideUsername = true, PasswordWatermark = "Anti-Executable password, if set", EnablePasswordPreview = false,
+                    RememberCheckBoxVisibility = Visibility.Collapsed, NegativeButtonVisibility = Visibility.Visible,
+                    AffirmativeButtonText = "Allow file", NegativeButtonText = "Cancel"
+                });
+            if (login is null || lifetime.IsCancellationRequested) return;
+            password = login.Password ?? string.Empty;
             var result = await aecClient.AllowAsync(aecInstallation!.Path!, password, file, lifetime.Token);
             if (lifetime.IsCancellationRequested) return;
             SetActivity(false);
@@ -225,11 +231,18 @@ public partial class MainWindow
             AecDiagnostic.PasswordRejected => "Password rejected",
             _ => result.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", AecState.Maintenance => "Maintenance", _ => "Unknown" }
         };
-        AecStateText.Foreground = AecStateStripe.Background = (Brush)FindResource(result.State == AecState.Unknown ? "MutedBrush" : "AccentBrush");
+        var tone = result.State switch { AecState.Enabled => "AccentBrush", AecState.Disabled or AecState.Maintenance => "WarningBrush", _ => "MutedBrush" };
+        AecStateText.SetResourceReference(ForegroundProperty, tone);
+        AecStateStripe.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, tone);
         // Like the Deep Freeze tab, the detail is shown only when it explains an unknown state.
         AecDetailText.Text = result.State == AecState.Unknown ? result.Detail : "";
         AecDetailText.Visibility = result.State == AecState.Unknown ? Visibility.Visible : Visibility.Collapsed;
         AecCheckedText.Text = $"Checked {aecCheckedAt:HH:mm:ss}{(demo ? " · simulated" : "")}";
+        // As on the Deep Freeze tab, offer only the changes that apply to the current state.
+        var state = result.State;
+        SetAction(AecEnableButton, state != AecState.Enabled, primary: state is AecState.Disabled or AecState.Maintenance);
+        SetAction(AecDisableButton, state != AecState.Disabled, primary: false);
+        AecMaintenanceButton.Visibility = state == AecState.Maintenance ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private bool AecBlocked(bool changing)
