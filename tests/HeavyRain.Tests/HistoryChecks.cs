@@ -241,6 +241,84 @@ internal static class HistoryChecks
             return Task.CompletedTask;
         });
 
+        // ---------------------------------------------------------------- Deep Freeze 8.71
+        // Shaped like a report from an 8.71.520.5738 workstation: each boot is a bare state written
+        // twice, and dialog requests name the account. Account names here are made up. The formatted
+        // text and event IDs weren't in that report, so these records don't rely on them.
+        static DfEventRecord Old(DateTimeOffset time, string text, string description = "") => new(time, "Deep Freeze", 1, text, [text], description);
+        static DfEventRecord[] Boot(DateTimeOffset time, string state = "Thawed") => [Old(time, state), Old(time.AddMilliseconds(10), state)];
+        static DfEventRecord Asked(DateTimeOffset time, string user, string state) => Old(time, $"\"{user}\" has changed Deep Freeze status to {state} from Workstation UI");
+
+        await check("8.71: a bare state is that boot's state, and other text isn't", () =>
+        {
+            Assert(DeepFreezeHistory.Classify(Old(At(13, 9, 0), "Thawed")) is { Kind: DfEventKind.BootStatus, State: ProtectionState.Thawed, Title: "Booted Thawed", EventId: 1 }, "Bare Thawed missed");
+            Assert(DeepFreezeHistory.Classify(Old(At(13, 9, 0), " frozen. ")) is { Kind: DfEventKind.BootStatus, State: ProtectionState.Frozen }, "Bare Frozen missed");
+            foreach (var text in new[] { "Thawed Locked", "Not Thawed", "Thawing", "ThawSpace", "Frozen drives: C", "" })
+                Assert(DeepFreezeHistory.Classify(Old(At(13, 9, 0), text)) is { Kind: DfEventKind.Other, State: ProtectionState.Unknown }, $"'{text}' read as a boot");
+            return Task.CompletedTask;
+        });
+
+        await check("8.71: a dialog request keeps its account, target and source", () =>
+        {
+            var entry = DeepFreezeHistory.Classify(Asked(At(13, 12, 8, 35), "rounder1", "Frozen"));
+            Assert(entry is { Kind: DfEventKind.NextBootRequest, State: ProtectionState.Frozen, User: "rounder1", Source: "Workstation UI", Title: "Frozen at next restart" }, "Request misread: " + entry);
+            Assert(entry.Detail == "Requested by rounder1 from the Workstation UI", entry.Detail);
+            Assert(DeepFreezeHistory.Classify(Old(At(13, 9, 0), "\"LAB\\a b\" has changed Deep Freeze status to Thawed from Workstation UI.")) is { User: "LAB\\a b", State: ProtectionState.Thawed, Source: "Workstation UI" }, "Domain account or full stop mishandled");
+            Assert(DeepFreezeHistory.Classify(Old(At(13, 9, 0), "\"x\" has changed Deep Freeze status to Lunar from Workstation UI")).Kind == DfEventKind.Other, "Unknown target guessed");
+            return Task.CompletedTask;
+        });
+
+        await check("8.71: the formatted text is used when the data field isn't recognized, and shown when neither is", () =>
+        {
+            Assert(DeepFreezeHistory.Classify(Old(At(13, 9, 0), "3", "Deep Freeze Status = Frozen")) is { Kind: DfEventKind.BootStatus, State: ProtectionState.Frozen }, "Formatted text ignored");
+            var odd = DeepFreezeHistory.Classify(new(At(13, 9, 0), "Deep Freeze", 731, "7", ["7"], "Something new happened: 7"));
+            Assert(odd is { Kind: DfEventKind.Other, Detail: "Something new happened: 7", EventId: 731 }, "Unfamiliar event lost its text or ID: " + odd);
+            return Task.CompletedTask;
+        });
+
+        await check("8.71: a boot recorded twice counts once; separate boots and opposite states don't merge", () =>
+        {
+            Assert(DeepFreezeHistory.ClassifyAll(Boot(At(13, 9, 0))).Count == 1, "Duplicate kept");
+            Assert(DeepFreezeHistory.ClassifyAll(Boot(At(13, 9, 0)).Reverse()).Count == 1, "Newest-first order not handled");
+            Assert(DeepFreezeHistory.ClassifyAll([.. Boot(At(13, 9, 0)), .. Boot(At(13, 9, 1))]).Count == 2, "Two boots merged");
+            Assert(DeepFreezeHistory.ClassifyAll([Old(At(13, 9, 0), "Thawed"), Old(At(13, 9, 0, 1), "Frozen")]).Count == 2, "Opposite states merged");
+            Assert(DeepFreezeHistory.ClassifyAll(VmDay).SequenceEqual(Entries(VmDay).OrderBy(e => e.Time)), "9.00 history changed");
+            return Task.CompletedTask;
+        });
+
+        await check("8.71: pending follows the dialog's request until a later boot", () =>
+        {
+            DfEventRecord[] asked = [.. Boot(At(13, 9, 0)), Asked(At(13, 12, 8, 35), "rounder1", "Frozen")];
+            var pending = DeepFreezeHistory.Pending(DeepFreezeHistory.ClassifyAll(asked), At(13, 8, 59, 30));
+            Assert(pending is { Target: ProtectionState.Frozen, User: "rounder1", Source: "Workstation UI", RestartRequested: false }, "Pending: " + pending);
+            Assert(DeepFreezeHistory.Pending(DeepFreezeHistory.ClassifyAll([.. asked, .. Boot(At(13, 12, 10, 1))]), At(13, 12, 9, 30)) is null, "Applied request still pending");
+            return Task.CompletedTask;
+        });
+
+        await check("8.71: the Thawed run counts boots, not records, and stops at the latest applied thaw request", () =>
+        {
+            DfEventRecord[] day =
+            [
+                .. Boot(At(10, 9, 0)), .. Boot(At(11, 9, 0)),
+                // A Frozen session could sit here and leave nothing behind.
+                Asked(At(13, 16, 52, 16), "rounder2", "Thawed"),
+                .. Boot(At(13, 16, 53, 40)), .. Boot(At(13, 16, 58, 56)), .. Boot(At(13, 17, 7, 38))
+            ];
+            var run = DeepFreezeHistory.Thawed(DeepFreezeHistory.ClassifyAll(day), ProtectionState.Thawed, At(13, 17, 7, 8));
+            Assert(run is { Boots: 3, AtLeast: false } && run.Since == At(13, 16, 53, 40), "Run: " + run);
+            // Asking to stay Thawed, before any restart, doesn't end the run.
+            var again = DeepFreezeHistory.Thawed(DeepFreezeHistory.ClassifyAll([.. day, Asked(At(13, 17, 30), "rounder2", "Thawed")]), ProtectionState.Thawed, At(13, 17, 7, 8));
+            Assert(again == run, "Pending thaw request cut the run: " + again);
+            return Task.CompletedTask;
+        });
+
+        await check("8.71: an expired licence with no date says so and needs attention", () =>
+        {
+            var licence = DfLicense.Parse("License Type: Subscription", "License Status: Expired");
+            Assert(licence is { Type: "Subscription", Status: "Expired", Expiry: null } && licence.Describe(new DateOnly(2026, 11, 16)) == "Subscription · Expired" && licence.NeedsAttention(new DateOnly(2026, 11, 16)), "Expired licence: " + licence);
+            return Task.CompletedTask;
+        });
+
         // ---------------------------------------------------------------- Cloud tasks
         await check("Cloud tasks: rows from the VM cache become tasks with local times", () =>
         {

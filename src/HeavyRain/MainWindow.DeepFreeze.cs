@@ -79,9 +79,13 @@ public partial class MainWindow
         var restarts = run.Boots > 1 ? $" · {run.Boots}{(run.AtLeast ? "+" : "")} restarts" : "";
         StateNoteText.Text = $"For {(run.AtLeast ? "at least " : "")}{Duration(length)} · since {run.Since.LocalDateTime.ToString("ddd d MMM HH:mm", CultureInfo.InvariantCulture)}{restarts}";
         StateNoteText.SetResourceReference(ForegroundProperty, length >= LongThaw ? "WarningBrush" : "MutedBrush");
-        StateNoteText.ToolTip = run.AtLeast ? "The latest restart has no Deep Freeze record, so it may have been Thawed for longer." : "From Deep Freeze's boot records.";
+        StateNoteText.ToolTip = (run.AtLeast ? "The latest restart has no Deep Freeze record, so it may have been Thawed for longer." : "From Deep Freeze's boot records.")
+            + (insights?.Policy?.PersistEventLogs == true ? "" : " A Frozen session may leave no record on this PC, so this can miss one.");
         StateNoteText.Visibility = Visibility.Visible;
     }
+
+    // "Command Line" reads as ordinary words; "Workstation UI" keeps its capitals.
+    private static string SourceText(string source) => source.Equals("Command Line", StringComparison.OrdinalIgnoreCase) ? "command line" : source;
 
     private static string PendingTitle(PendingBoot pending) => $"{pending.Target} at next restart";
 
@@ -92,7 +96,7 @@ public partial class MainWindow
             PendingText.Text = pending.Target == status.State ? $"Stays {pending.Target} after restart" : $"{pending.Target} at next restart";
             PendingText.SetResourceReference(ForegroundProperty, pending.Target == ProtectionState.Thawed ? "WarningBrush" : "AccentBrush");
             var when = pending.RequestedAt.LocalDateTime.ToString("ddd HH:mm", CultureInfo.InvariantCulture);
-            PendingDetailText.Text = $"Requested {when}{(pending.Source is null ? "" : $" from the {pending.Source.ToLowerInvariant()}")}"
+            PendingDetailText.Text = $"Requested {when}{(pending.User is null ? "" : $" by {pending.User}")}{(pending.Source is null ? "" : $" from the {SourceText(pending.Source)}")}"
                 + (pending.RestartRequested ? ". The restart it asked for hasn't happened." : ".");
             return;
         }

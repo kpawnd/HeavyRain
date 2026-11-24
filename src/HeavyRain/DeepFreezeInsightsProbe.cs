@@ -38,7 +38,7 @@ public static class DeepFreezeInsightsProbe
             var span = (long)TimeSpan.FromDays(HistoryDays).TotalMilliseconds;
             var records = ReadLog("Application", $"*[System[Provider[@Name='{DeepFreezeHistory.Provider}'] and TimeCreated[timediff(@SystemTime) <= {span}]]]", cancellationToken)
                 .Concat(ReadLog("System", $"*[System[((Provider[@Name='User32'] and EventID=1074) or (Provider[@Name='EventLog'] and EventID=6008)) and TimeCreated[timediff(@SystemTime) <= {span}]]]", cancellationToken));
-            entries.AddRange(records.Select(DeepFreezeHistory.Classify));
+            entries.AddRange(DeepFreezeHistory.ClassifyAll(records));
         }
         catch (Exception ex) when (ex is EventLogException or UnauthorizedAccessException or InvalidOperationException)
         { eventProblem = $"Windows' event logs couldn't be read ({ex.GetType().Name})."; }
@@ -88,8 +88,12 @@ public static class DeepFreezeInsightsProbe
             if (record is null) break;
             if (record.TimeCreated is not { } created) continue;
             var data = record.Properties.Select(property => property.Value?.ToString() ?? "").ToList();
-            var message = record.ProviderName == DeepFreezeHistory.Provider ? data.FirstOrDefault(value => value.Length > 0) ?? Describe(record) : "";
-            records.Add(new(new DateTimeOffset(created), record.ProviderName, record.Id, message, data));
+            // Deep Freeze 9.00 puts the whole sentence in the first data field. On 8.71 that field held only
+            // the state, so the formatted text is kept as well.
+            var isDeepFreeze = record.ProviderName == DeepFreezeHistory.Provider;
+            var description = isDeepFreeze ? Describe(record) : "";
+            var message = isDeepFreeze ? data.FirstOrDefault(value => value.Length > 0) ?? description : "";
+            records.Add(new(new DateTimeOffset(created), record.ProviderName, record.Id, message, data, description));
         }
         return records;
     }

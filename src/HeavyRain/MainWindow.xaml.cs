@@ -305,7 +305,7 @@ public partial class MainWindow : MetroWindow
         try
         {
             await File.WriteAllTextAsync(dialog.FileName, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
-            Log("Report saved. It includes this computer's name, installation paths and session activity.");
+            Log("Report saved. It includes this computer's name, installation paths, session activity and the account names in Deep Freeze's history.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log("Report could not be saved. Choose a writable location."); }
     }
