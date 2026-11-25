@@ -414,6 +414,7 @@ await AecChecks.RunAsync(Check);
 await AecDiagnosticChecks.RunAsync(Check);
 await AecInsightChecks.RunAsync(Check);
 await HistoryChecks.RunAsync(Check);
+await ProviderChecks.RunAsync(Check);
 await WikiSignInChecks.RunAsync(Check);
 await WikiActionAuditChecks.RunAsync(Check);
 await Check("Control transport closes stdin and preserves bounded stderr", async () =>

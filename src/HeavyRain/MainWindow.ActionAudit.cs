@@ -14,13 +14,35 @@ public partial class MainWindow
     private async Task<(bool Allowed, ProtectionAudit? Audit)> BeginProtectionAuditAsync(string prompt,
         WikiProtectionAction action, bool restart = false)
     {
-        var (allowed, session) = await AuthorizeActionAsync(prompt);
-        if (!allowed || session is null) return (allowed, null);
+        if (wiki is not { } signIn) return (true, null);
+        if (lifetime.IsCancellationRequested) return (false, null);
 
-        var audit = new ProtectionAudit(new WikiActionAuditClient(WikiHttp, wiki!.Site), session, Guid.NewGuid());
-        var result = await audit.Client.RecordRequestAsync(session, audit.RequestId, Environment.MachineName, action, restart, lifetime.Token);
-        if (result == WikiAuditStatus.Recorded) return (true, audit);
-        if (result == WikiAuditStatus.SignInRequired && ReferenceEquals(wikiSession, session))
+        var session = wikiSession;
+        var canRenew = session?.IsCurrent(DateTimeOffset.UtcNow) == true;
+        if (!canRenew) session = OpenSignIn();
+        if (session is null || lifetime.IsCancellationRequested) return (false, null);
+
+        var client = new WikiActionAuditClient(WikiHttp, signIn.Site);
+        var requestId = Guid.NewGuid();
+        // The wiki authenticates the user and records the request together.
+        async Task<WikiAuditStatus> RecordRequestAsync(WikiSession actor)
+        {
+            try { return await client.RecordRequestAsync(actor, requestId, Environment.MachineName, action, restart, lifetime.Token); }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return WikiAuditStatus.Unavailable; }
+        }
+
+        var result = await RecordRequestAsync(session);
+        if (lifetime.IsCancellationRequested || !ReferenceEquals(wikiSession, session)) return (false, null);
+        if (result == WikiAuditStatus.SignInRequired && canRenew)
+        {
+            Log("The wiki no longer accepts this sign-in.");
+            session = OpenSignIn();
+            if (session is null || lifetime.IsCancellationRequested) return (false, null);
+            result = await RecordRequestAsync(session);
+            if (lifetime.IsCancellationRequested || !ReferenceEquals(wikiSession, session)) return (false, null);
+        }
+        if (result == WikiAuditStatus.Recorded) return (true, new ProtectionAudit(client, session, requestId));
+        if (result == WikiAuditStatus.SignInRequired)
         {
             wikiSession = null;
             RenderSignIn();

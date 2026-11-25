@@ -78,19 +78,7 @@
                                         <TextBlock Text="{Binding Time}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource AccentBrush}" Opacity="0.8"/>
                                         <!-- The host fades in and out with the active line; the dot inside breathes. -->
                                         <Border x:Name="PulseHost" Grid.Column="1" Opacity="0" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,5,0,0">
-                                            <Ellipse Width="6" Height="6" Fill="{StaticResource AccentBrush}">
-                                                <Ellipse.Triggers>
-                                                    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                                        <BeginStoryboard>
-                                                            <Storyboard RepeatBehavior="Forever" AutoReverse="True">
-                                                                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="1" To="0.25" Duration="0:0:0.8">
-                                                                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
-                                                                </DoubleAnimation>
-                                                            </Storyboard>
-                                                        </BeginStoryboard>
-                                                    </EventTrigger>
-                                                </Ellipse.Triggers>
-                                            </Ellipse>
+                                            <Ellipse x:Name="PulseDot" Width="6" Height="6" Fill="{StaticResource AccentBrush}"/>
                                         </Border>
                                         <TextBlock x:Name="Line" Grid.Column="2" Text="{Binding Message}" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource TextBrush}" Opacity="0.66" TextWrapping="Wrap">
                                             <TextBlock.OpacityMask>
@@ -113,8 +101,16 @@
                                                         <DoubleAnimation Storyboard.TargetName="Line" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.25"/>
                                                     </Storyboard>
                                                 </BeginStoryboard>
+                                                <BeginStoryboard Name="PulseBreathing">
+                                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                        <DoubleAnimation Storyboard.TargetName="PulseDot" Storyboard.TargetProperty="Opacity" From="1" To="0.25" Duration="0:0:0.8">
+                                                            <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                                        </DoubleAnimation>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
                                             </DataTrigger.EnterActions>
                                             <DataTrigger.ExitActions>
+                                                <RemoveStoryboard BeginStoryboardName="PulseBreathing"/>
                                                 <BeginStoryboard>
                                                     <Storyboard>
                                                         <DoubleAnimation Storyboard.TargetName="PulseHost" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.18"/>
@@ -137,6 +133,6 @@
                 <TextBlock x:Name="LoadingText" Text="Starting local protection tools…" FontSize="12" Foreground="{StaticResource MutedBrush}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
         </Grid>
-        <metro:MetroProgressBar Grid.Row="2" IsIndeterminate="True" Foreground="{StaticResource AccentBrush}" Background="{StaticResource AccentSurfaceBrush}" Height="4"/>
+        <metro:MetroProgressBar x:Name="StartupProgress" Grid.Row="2" IsIndeterminate="True" Foreground="{StaticResource AccentBrush}" Background="{StaticResource AccentSurfaceBrush}" Height="4"/>
     </Grid>
 </metro:MetroWindow>

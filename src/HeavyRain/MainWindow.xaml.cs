@@ -40,6 +40,7 @@ public partial class MainWindow : MetroWindow
         MachineNameText.Text = demo ? "LAB-PC-07" : Environment.MachineName;
         InitializeSignIn();
         DemoBanner.Visibility = demo ? Visibility.Visible : Visibility.Collapsed;
+        ContentRendered += (_, _) => { if (!lifetime.IsCancellationRequested) timer.Start(); };
         timer.Tick += async (_, _) => { if (!busy && WindowState != WindowState.Minimized) await RefreshAsync(false); };
         StateChanged += async (_, _) => { if (timer.IsEnabled && WindowState != WindowState.Minimized && !busy) await RefreshAsync(false); };
         Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); PasswordInput.Clear(); AecPasswordInput.Clear(); ActivityProgress.IsIndeterminate = false; ActivityProgress.Visibility = Visibility.Collapsed; };
@@ -66,7 +67,6 @@ public partial class MainWindow : MetroWindow
         reportProgress?.Invoke("Metro interface initialized.");
         if (demo) reportProgress?.Invoke("Demo mode: using sample data; no vendor commands will run.");
         await RefreshAsync(true, reportProgress);
-        if (!lifetime.IsCancellationRequested) timer.Start();
     }
 
     private async Task RefreshAsync(bool log, Action<string>? reportProgress = null)
@@ -110,9 +110,17 @@ public partial class MainWindow : MetroWindow
             var previous = status.State;
             reportProgress?.Invoke(demo ? "Loading the sample protection state…" : installation.DfcPath is not null
                 ? "Running DFC.exe get /ISFROZEN…" : "Skipping the protection query: DFC.exe is unavailable.");
-            status = installation.DfcPath is { } path ? await client.QueryAsync(path, lifetime.Token)
-                : new(ProtectionState.Unknown, "The Deep Freeze control interface is unavailable. A Cloud agent may be present without the Deep Freeze protection component.", null);
+            var statusTask = installation.DfcPath is { } path ? client.QueryAsync(path, lifetime.Token)
+                : Task.FromResult(new StatusResult(ProtectionState.Unknown,
+                    "The Deep Freeze control interface is unavailable. A Cloud agent may be present without the Deep Freeze protection component.", null));
+            var providerTask = demo ? null : FaronicsProviderReader.ReadAsync(lifetime.Token);
+            if (providerTask is not null) await Task.WhenAll(statusTask, providerTask);
+            status = await statusTask;
             lifetime.Token.ThrowIfCancellationRequested();
+            var providerReading = providerTask is null ? null : await providerTask;
+            // Deep Freeze's own provider answers without DFC, so it fills in when DFC can't.
+            if (status.State == ProtectionState.Unknown && providerReading?.DeepFreeze.State is { } reported and not ProtectionState.Unknown)
+                status = new(reported, $"Reported by Deep Freeze's provider. {status.Detail}", status.ExitCode);
             reportProgress?.Invoke($"Protection: {status.State}." + (status.State == ProtectionState.Unknown ? $" {status.Detail}" : ""));
             if (inspectMetadata)
             {

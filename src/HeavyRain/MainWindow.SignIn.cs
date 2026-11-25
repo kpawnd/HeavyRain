@@ -56,13 +56,20 @@ public partial class MainWindow
         OpenSignIn();
     }
 
-    private WikiSession? OpenSignIn()
+    internal bool SignInAtStartup(SplashWindow splash)
+    {
+        if (wiki is null) return true;
+        splash.ShowSignInRequired();
+        return OpenSignIn(splash, startAutomatically: false) is not null;
+    }
+
+    private WikiSession? OpenSignIn(Window? owner = null, bool startAutomatically = true)
     {
         if (wiki is null) return null;
         wikiSession = null;
         RenderSignIn();
 
-        var dialog = new SignInWindow(wiki) { Owner = this };
+        var dialog = new SignInWindow(wiki, startAutomatically) { Owner = owner ?? this };
         if (dialog.ShowDialog() != true || dialog.Session is not { } signedIn || !signedIn.IsCurrent(DateTimeOffset.UtcNow)) return null;
 
         wikiSession = signedIn;
@@ -71,33 +78,4 @@ public partial class MainWindow
         return signedIn;
     }
 
-    private async Task<(bool Allowed, WikiSession? Session)> AuthorizeActionAsync(string action)
-    {
-        if (wiki is null) return (true, null);
-        if (lifetime.IsCancellationRequested) return (false, null);
-
-        if (wikiSession is { } session)
-        {
-            CheckStatus status;
-            try { status = await wiki.CheckAsync(session, lifetime.Token); }
-            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { return (false, null); }
-            if (lifetime.IsCancellationRequested || !ReferenceEquals(wikiSession, session)) return (false, null);
-
-            if (session.IsCurrent(DateTimeOffset.UtcNow))
-            {
-                if (status == CheckStatus.Valid) return (true, session);
-                if (status == CheckStatus.Unreachable)
-                {
-                    Log($"Couldn't verify {session.User.Username}'s wiki sign-in. The request to {action} was blocked.");
-                    new ActionNoticeWindow(new("Couldn't verify wiki sign-in", $"Heavy Rain needs to reach the TA wiki to {action}. Check your connection and try again.")) { Owner = this }.ShowDialog();
-                    return (false, null);
-                }
-            }
-
-            Log(status == CheckStatus.Revoked ? "The wiki no longer accepts this sign-in." : "The wiki sign-in expired.");
-        }
-
-        var signedIn = OpenSignIn();
-        return signedIn is not null && !lifetime.IsCancellationRequested ? (true, signedIn) : (false, null);
-    }
 }

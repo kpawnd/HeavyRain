@@ -78,7 +78,7 @@ dotnet publish src/HeavyRain/HeavyRain.csproj -c Release -o publish
 
 ### Wiki sign-in (optional)
 
-Copy `src/HeavyRain/HeavyRain.local.props.example` to `HeavyRain.local.props` (it's git-ignored) and set your wiki's address before building. With a wiki configured, **Sign in** opens its approval page. Compare the code and PC name with Heavy Rain, then approve the request. The sign-in stays in memory until Heavy Rain closes, you sign out, or the token expires after at most 12 hours.
+Copy `src/HeavyRain/HeavyRain.local.props.example` to `HeavyRain.local.props` (it's git-ignored) and set your wiki's address before building. With a wiki configured, Heavy Rain asks you to sign in after loading and opens the main window once the wiki approves the session. Choose **Sign in**, then compare the code and PC name on the approval page with Heavy Rain. The sign-in stays in memory until Heavy Rain closes, you sign out, or the token expires after at most 12 hours. If you cancel startup sign-in, Heavy Rain closes.
 
 - The wiki must confirm the signed-in user and record the request before Heavy Rain sends a protection change. Use a wiki build with the device-action audit API and database migration applied. Status checks remain available during a wiki outage.
 - The wiki's **Admin Logs** show approvals, protection requests, and the outcomes reported by Heavy Rain. If Heavy Rain can't confirm that the wiki recorded a Deep Freeze outcome, it leaves the accepted next-boot setting in place and skips the automatic restart.

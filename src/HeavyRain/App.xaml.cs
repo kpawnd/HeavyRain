@@ -31,17 +31,23 @@ public partial class App : Application
             splash.Show();
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
             if (cancelled) return;
-            using var startupSound = EmbeddedSound.TryPlay("HeavyRain.StartupChime.wav", !e.Args.Contains("--silent", StringComparer.OrdinalIgnoreCase));
+            if (!e.Args.Contains("--silent", StringComparer.OrdinalIgnoreCase))
+                _ = EmbeddedSound.PlayToEndAsync("HeavyRain.StartupChime.wav");
             await splash.RunStartupAsync(async () =>
             {
                 window = new MainWindow();
                 await window.InitializeAsync(splash.ReportProgress);
             });
-            if (cancelled) return;
+            if (cancelled || window is null) return;
+            if (!window.SignInAtStartup(splash))
+            {
+                if (!cancelled) splash.Close();
+                return;
+            }
             ready = true;
             MainWindow = window;
             ShutdownMode = ShutdownMode.OnMainWindowClose;
-            window!.Show();
+            window.Show();
             splash.Close();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

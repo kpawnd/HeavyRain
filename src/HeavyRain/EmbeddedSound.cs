@@ -12,19 +12,33 @@ internal sealed class EmbeddedSound : IDisposable
     {
         if (!enabled) return null;
         var sound = new EmbeddedSound();
+        if (sound.Play(resourceName, asynchronous: true)) return sound;
+        sound.Dispose();
+        return null;
+    }
+
+    public static Task PlayToEndAsync(string resourceName) => Task.Run(() =>
+    {
+        using var sound = new EmbeddedSound();
+        sound.Play(resourceName, asynchronous: false);
+    });
+
+    private bool Play(string resourceName, bool asynchronous)
+    {
         try
         {
             using var resource = typeof(EmbeddedSound).Assembly.GetManifestResourceStream(resourceName);
-            if (resource is null) return null;
+            if (resource is null) return false;
             using var memory = new MemoryStream();
             resource.CopyTo(memory);
-            sound.buffer = GCHandle.Alloc(memory.ToArray(), GCHandleType.Pinned);
-            sound.playing = PlaySound(sound.buffer.AddrOfPinnedObject(), IntPtr.Zero, 0x0001 | 0x0002 | 0x0004 | 0x0010);
-            if (sound.playing) return sound;
+            buffer = GCHandle.Alloc(memory.ToArray(), GCHandleType.Pinned);
+            const uint memoryFlags = 0x0002 | 0x0004 | 0x0010;
+            var played = PlaySound(buffer.AddrOfPinnedObject(), IntPtr.Zero, asynchronous ? memoryFlags | 0x0001 : memoryFlags);
+            playing = asynchronous && played;
+            return played;
         }
         catch (Exception ex) when (ex is IOException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException) { }
-        sound.Dispose();
-        return null;
+        return false;
     }
 
     public void Dispose()

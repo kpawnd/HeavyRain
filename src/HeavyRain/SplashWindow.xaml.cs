@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using MahApps.Metro.Controls;
 
 namespace HeavyRain;
@@ -36,6 +37,7 @@ public partial class SplashWindow : MetroWindow
     private bool revealed;
     private bool pumping;
     private bool started;
+    private bool finished;
     private bool closed;
 
     public SplashWindow()
@@ -57,15 +59,46 @@ public partial class SplashWindow : MetroWindow
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token, cancellationToken);
         var token = linked.Token;
         elapsed.Restart();
-        await Task.WhenAll(initialize().WaitAsync(token), RevealLogsAsync(token));
-        // Let the queued lines finish at their own pace, within a limit, then hold the last line
-        // briefly so the final results can be read.
-        var drainUntil = elapsed.Elapsed + TimeSpan.FromSeconds(4);
-        while ((pending.Count > 0 || pumping) && elapsed.Elapsed < drainUntil) await Task.Delay(40, token);
-        token.ThrowIfCancellationRequested();
-        LoadingText.Text = "Checks complete.";
-        var remaining = TimeSpan.FromMilliseconds(Math.Max(6000, elapsed.Elapsed.TotalMilliseconds + 700)) - elapsed.Elapsed;
-        if (remaining > TimeSpan.Zero) await Task.Delay(remaining, token);
+        var reveal = RevealLogsAsync(token);
+        try
+        {
+            await initialize().WaitAsync(token);
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            token.ThrowIfCancellationRequested();
+            CompleteLog();
+            SetCompleteStatus("Checks complete.");
+        }
+        finally
+        {
+            linked.Cancel();
+            try { await reveal; }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        }
+    }
+
+    internal void ShowSignInRequired() => SetCompleteStatus("Sign in with the TA wiki to continue.");
+
+    private void SetCompleteStatus(string message)
+    {
+        StartupProgress.IsIndeterminate = false;
+        StartupProgress.Value = StartupProgress.Maximum;
+        LoadingText.Text = message;
+    }
+
+    private void CompleteLog()
+    {
+        finished = true;
+        if (active is { } last) last.IsActive = false;
+        active = null;
+        while (pending.TryDequeue(out var entry))
+            if (!entry.Message.StartsWith(MinorPrefix, StringComparison.Ordinal)) AddEntry(entry);
+
+        CreditPanel.Visibility = Visibility.Collapsed;
+        LogPanel.BeginAnimation(OpacityProperty, null);
+        LogPanel.Opacity = 1;
+        LogPanel.Visibility = Visibility.Visible;
+        BeginAnimation(LogOffsetProperty, null);
+        LogScroll.ScrollToEnd();
     }
 
     // The startup log always animates, like the error dialog's shake, because Windows commonly
@@ -73,6 +106,7 @@ public partial class SplashWindow : MetroWindow
     private async Task RevealLogsAsync(CancellationToken token)
     {
         await Task.Delay(1600, token);
+        token.ThrowIfCancellationRequested();
         var duration = TimeSpan.FromMilliseconds(650);
         CreditPanel.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, duration) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } });
         CreditOffset.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -36, duration)
@@ -80,6 +114,7 @@ public partial class SplashWindow : MetroWindow
             EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseIn }
         });
         await Task.Delay(duration, token);
+        token.ThrowIfCancellationRequested();
         CreditPanel.Visibility = Visibility.Collapsed;
         LogPanel.Visibility = Visibility.Visible;
         LogPanel.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(500)) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut } });
@@ -91,12 +126,13 @@ public partial class SplashWindow : MetroWindow
     {
         var entry = new StartupEntry($"{elapsed.Elapsed.TotalSeconds:00.0}s", message,
             ResultPrefixes.Any(prefix => message.StartsWith(prefix, StringComparison.Ordinal)));
-        if (!Dispatcher.HasShutdownStarted) _ = Dispatcher.InvokeAsync(() => Enqueue(entry));
+        if (Dispatcher.CheckAccess()) Enqueue(entry);
+        else if (!Dispatcher.HasShutdownStarted) _ = Dispatcher.InvokeAsync(() => Enqueue(entry));
     }
 
     private void Enqueue(StartupEntry entry)
     {
-        if (closed) return;
+        if (closed || finished) return;
         pending.Enqueue(entry);
         if (revealed && !pumping) _ = PumpAsync();
     }
@@ -108,7 +144,7 @@ public partial class SplashWindow : MetroWindow
         pumping = true;
         try
         {
-            while (pending.Count > 0 && !closed)
+            while (pending.Count > 0 && !closed && !finished)
             {
                 var entry = pending.Dequeue();
                 if (pending.Count > 2 && entry.Message.StartsWith(MinorPrefix, StringComparison.Ordinal)) continue;
@@ -122,12 +158,17 @@ public partial class SplashWindow : MetroWindow
     private void Show(StartupEntry entry)
     {
         if (active is { } previous) previous.IsActive = false;
-        entries.Add(entry);
-        if (entries.Count > 100) entries.RemoveAt(0);
+        AddEntry(entry);
         active = entry;
         entry.IsActive = true;
         LoadingText.Text = entry.Message;
         GlideToEnd();
+    }
+
+    private void AddEntry(StartupEntry entry)
+    {
+        entries.Add(entry);
+        if (entries.Count > 100) entries.RemoveAt(0);
     }
 
     // Retargets the scroll animation from wherever it currently is, so consecutive lines blend
