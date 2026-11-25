@@ -38,6 +38,7 @@ public partial class MainWindow : MetroWindow
         aecClient = new AecClient(demo ? new AecDemoRunner() : new CommandProcessRunner(), demo ? null : new AecDiagnosticProbe(), demo ? null : CreateAecProviderReader());
         // The demo shows a sample name, so screenshots of it don't carry the real computer's name.
         MachineNameText.Text = demo ? "LAB-PC-07" : Environment.MachineName;
+        InitializeSignIn();
         DemoBanner.Visibility = demo ? Visibility.Visible : Visibility.Collapsed;
         timer.Tick += async (_, _) => { if (!busy && WindowState != WindowState.Minimized) await RefreshAsync(false); };
         StateChanged += async (_, _) => { if (timer.IsEnabled && WindowState != WindowState.Minimized && !busy) await RefreshAsync(false); };
@@ -183,6 +184,7 @@ public partial class MainWindow : MetroWindow
         busy = value;
         SetActivity(value);
         RefreshButton.IsEnabled = BrowseButton.IsEnabled = DetectButton.IsEnabled = ExportButton.IsEnabled = !value;
+        SignInButton.IsEnabled = !value;
         PasswordInput.IsEnabled = RestartSwitch.IsEnabled = !value;
         AecPasswordInput.IsEnabled = AecBrowseButton.IsEnabled = AecDetectButton.IsEnabled = !value;
         UpdateControls();
@@ -231,18 +233,25 @@ public partial class MainWindow : MetroWindow
         {
             PasswordInput.Clear(); SetBusy(false); timer.Start(); return;
         }
-        SetBusy(true);
         var password = PasswordInput.Password;
         PasswordInput.Clear();
+        ProtectionAudit? audit = null;
         try
         {
-            var result = await client.ChangeAsync(path, password, target, restart, lifetime.Token);
+            var authorization = await BeginProtectionAuditAsync(thaw ? "thaw this PC" : "freeze this PC",
+                thaw ? WikiProtectionAction.Thaw : WikiProtectionAction.Freeze, restart);
+            if (!authorization.Allowed) return;
+            audit = authorization.Audit;
+            var result = await client.ChangeAsync(path, password, target, restart, lifetime.Token,
+                beforeRestart: audit is null ? null : () => ReportProtectionOutcomeAsync(audit, ChangeOutcome.Accepted));
             password = string.Empty;
+            await ReportProtectionOutcomeAsync(audit, result.Outcome);
+            if (lifetime.IsCancellationRequested) return;
             commandUncertain = result.Outcome == ChangeOutcome.Uncertain;
-            Log($"{target} {(restart ? "and restart" : "next boot")}: {result.Outcome}. {result.Detail}");
+            Log($"{target} {(restart ? "and restart" : "next boot")}{audit?.Attribution}: {result.Outcome}. {result.Detail}");
             // Successes show in Last request; problems show once, in a dialog, not also on the page.
             if (result.Outcome == ChangeOutcome.Accepted)
-                SetLastRequest((thaw ? "Thawed" : "Frozen") + (restart ? ", restarting now" : " from next restart") + $" · {DateTime.Now:HH:mm:ss}{(demo ? " (demo)" : "")}");
+                SetLastRequest((thaw ? "Thawed" : "Frozen") + (restart && !result.RestartFailed ? ", restarting now" : " from next restart") + $" · {DateTime.Now:HH:mm:ss}{(demo ? " (demo)" : "")}");
             if (result.RestartFailed)
                 new ActionNoticeWindow(new("Restart the PC to apply the change", result.Detail)) { Owner = this }.ShowDialog();
             else if (result.Outcome == ChangeOutcome.Uncertain)
@@ -252,6 +261,8 @@ public partial class MainWindow : MetroWindow
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            await ReportProtectionOutcomeAsync(audit, ChangeOutcome.Uncertain);
+            if (lifetime.IsCancellationRequested) return;
             commandUncertain = true;
             SetLastRequest($"{target} · outcome unknown · {DateTime.Now:HH:mm:ss}");
             Log($"Change outcome unknown ({ex.GetType().Name}).");
@@ -287,7 +298,7 @@ public partial class MainWindow : MetroWindow
         if (dialog.ShowDialog(this) != true) return;
         var report = new
         {
-            schemaVersion = 3, demo, computer = Environment.MachineName, os = Environment.OSVersion.VersionString,
+            schemaVersion = 4, demo, signedIn = wikiSession?.User, wiki = wiki?.Site.Host, computer = Environment.MachineName, os = Environment.OSVersion.VersionString,
             administrator = admin, checkedAt, state = status.State.ToString(), status.Detail, status.ExitCode,
             deepFreezeVersion, installation, policy, sessionBootRequest = sessionRequest, license,
             deepFreeze = insights is null ? null : new

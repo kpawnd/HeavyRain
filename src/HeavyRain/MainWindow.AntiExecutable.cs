@@ -172,6 +172,7 @@ public partial class MainWindow
         SetBusy(true);
         timer.Stop();
         var password = string.Empty;
+        ProtectionAudit? audit = null;
         try
         {
             // One MahApps dialog both confirms the file and takes the AE password, since this
@@ -186,17 +187,27 @@ public partial class MainWindow
                 });
             if (login is null || lifetime.IsCancellationRequested) return;
             password = login.Password ?? string.Empty;
+            var authorization = await BeginProtectionAuditAsync("allow a file", WikiProtectionAction.AllowFile);
+            if (!authorization.Allowed) return;
+            audit = authorization.Audit;
             var result = await aecClient.AllowAsync(aecInstallation!.Path!, password, file, lifetime.Token);
+            password = string.Empty;
+            await ReportProtectionOutcomeAsync(audit, result.Outcome);
             if (lifetime.IsCancellationRequested) return;
             SetActivity(false);
             AecPendingText.Text = $"{DateTime.Now:HH:mm:ss} · {result.Detail}";
-            Log($"Anti-Executable allow {entry.FileName}: {result.Outcome}. {result.Detail}");
+            Log($"Anti-Executable allow {entry.FileName}{audit?.Attribution}: {result.Outcome}. {result.Detail}");
             if (result.Outcome is ChangeOutcome.Rejected or ChangeOutcome.Uncertain)
                 new ActionNoticeWindow(new(result.Outcome == ChangeOutcome.Rejected ? "Anti-Executable didn't allow the file" : "The allow request's result is unknown", result.Detail)) { Owner = this }.ShowDialog();
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            await ReportProtectionOutcomeAsync(audit, ChangeOutcome.Uncertain);
+        }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            await ReportProtectionOutcomeAsync(audit, ChangeOutcome.Uncertain);
+            if (lifetime.IsCancellationRequested) return;
             SetActivity(false);
             AecPendingText.Text = "The allow request couldn't be completed. It may have taken effect; check the allowed list in Anti-Executable.";
             Log($"Anti-Executable allow failed ({ex.GetType().Name}).");
@@ -310,12 +321,22 @@ public partial class MainWindow
         var password = AecPasswordInput.Password;
         AecPasswordInput.Clear();
         var sent = false;
+        ProtectionAudit? audit = null;
         try
         {
             var confirmation = await this.ShowMessageAsync("Change Anti-Executable?", $"Computer: {Environment.MachineName}{(demo ? " (DEMO)" : "")}\n\n{message}\n\nLocal changes may differ from the Cloud policy.",
                 MessageDialogStyle.AffirmativeAndNegative, new MetroDialogSettings
                 { AffirmativeButtonText = "Confirm change", NegativeButtonText = "Cancel", DefaultButtonFocus = MessageDialogResult.Negative });
             if (confirmation != MessageDialogResult.Affirmative || lifetime.IsCancellationRequested) return;
+            var (prompt, auditAction) = action switch
+            {
+                AecAction.Enable => ("enable Anti-Executable", WikiProtectionAction.EnableAntiExecutable),
+                AecAction.Disable => ("disable Anti-Executable", WikiProtectionAction.DisableAntiExecutable),
+                _ => ("start maintenance", WikiProtectionAction.StartMaintenance)
+            };
+            var authorization = await BeginProtectionAuditAsync(prompt, auditAction);
+            if (!authorization.Allowed) return;
+            audit = authorization.Audit;
             sent = true;
             var result = await aecClient.ChangeAsync(aecInstallation!.Path!, password, action, allowMaintenanceDisable: action == AecAction.Disable, cancellationToken: lifetime.Token,
                 verificationProgress: (attempt, observed) =>
@@ -325,19 +346,26 @@ public partial class MainWindow
                     AecPendingText.Text = $"Verifying {action} · check {attempt} · {state}";
                     Log($"Anti-Executable {action}: verification {attempt}, {state} (AEC exit {observed.ExitCode?.ToString() ?? "unavailable"}).");
                 });
+            password = string.Empty;
+            await ReportProtectionOutcomeAsync(audit, result.Outcome);
             if (lifetime.IsCancellationRequested) return;
             SetActivity(false);
             ApplyAecStatus(result.Status ?? new(AecState.Unknown, "Check status to verify the current Anti-Executable state."));
             aecUncertain = result.Outcome == ChangeOutcome.Uncertain;
             aecPendingAction = aecUncertain ? action : null;
             AecPendingText.Text = $"{DateTime.Now:HH:mm:ss} · {result.Detail}";
-            Log($"Anti-Executable {action}: {result.Outcome}. {result.Detail}");
+            Log($"Anti-Executable {action}{audit?.Attribution}: {result.Outcome}. {result.Detail}");
             if (result.Outcome is ChangeOutcome.Rejected or ChangeOutcome.Uncertain)
                 new ActionNoticeWindow(new("Anti-Executable change was not confirmed", result.Detail)) { Owner = this }.ShowDialog();
         }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+            await ReportProtectionOutcomeAsync(audit, ChangeOutcome.Uncertain);
+        }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            await ReportProtectionOutcomeAsync(audit, ChangeOutcome.Uncertain);
+            if (lifetime.IsCancellationRequested) return;
             SetActivity(false);
             aecUncertain = sent;
             aecPendingAction = sent ? action : null;

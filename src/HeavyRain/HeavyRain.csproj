@@ -14,6 +14,13 @@
     <EmbeddedResource Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" />
   </ItemGroup>
 
+  <!-- The wiki address for signing in is kept out of this public repository: put it in an untracked
+       HeavyRain.local.props (see HeavyRain.local.props.example). Without one, sign-in is off. -->
+  <Import Project="HeavyRain.local.props" Condition="Exists('HeavyRain.local.props')" />
+  <ItemGroup Condition="'$(HeavyRainWikiUrl)' != ''">
+    <AssemblyMetadata Include="WikiUrl" Value="$(HeavyRainWikiUrl)" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>

@@ -14,6 +14,8 @@
     <metro:MetroWindow.RightWindowCommands>
         <metro:WindowCommands ShowSeparators="False">
             <TextBlock x:Name="MachineNameText" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+            <Button x:Name="SignInButton" Content="Sign in" Click="SignIn_Click" Visibility="Collapsed" Margin="0,0,2,0" Padding="12,0"
+                    Style="{DynamicResource MahApps.Styles.Button.WindowCommands}" Foreground="{StaticResource AccentBrush}" AutomationProperties.Name="Sign in with the TA wiki"/>
             <Button x:Name="RefreshButton" Content="Refresh" Click="Refresh_Click" ToolTip="Check everything again" Margin="0,0,6,0" Padding="12,0"
                     Style="{DynamicResource MahApps.Styles.Button.WindowCommands}" Foreground="{StaticResource TextBrush}"/>
         </metro:WindowCommands>

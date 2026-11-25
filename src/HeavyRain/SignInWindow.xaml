@@ -1,0 +1,28 @@
+<metro:MetroWindow x:Class="HeavyRain.SignInWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:metro="http://metro.mahapps.com/winfx/xaml/controls"
+        Title="Sign in" TitleCharacterCasing="Normal" ShowTitleBar="False"
+        Width="460" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" WindowTransitionsEnabled="False"
+        Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource AccentStrongBrush}" BorderThickness="1"
+        FontFamily="Segoe UI" Closing="Window_Closing">
+    <Border Background="{StaticResource CanvasBrush}" BorderBrush="{StaticResource AccentStrongBrush}" BorderThickness="0,3,0,0" Padding="28">
+        <StackPanel>
+            <TextBlock Text="HEAVY RAIN" Foreground="{StaticResource AccentBrush}" FontSize="11" Margin="0,0,0,16"/>
+            <TextBlock Text="Sign in with the TA wiki" FontSize="24" FontWeight="Light" Margin="0,0,0,12"/>
+            <TextBlock x:Name="IntroText" Foreground="{StaticResource MutedBrush}" FontSize="13" LineHeight="21" Margin="0,0,0,18"
+                       Text="Approve this code in your browser, or open the link on your phone. The wiki uses your Microsoft sign-in."/>
+            <TextBlock x:Name="CodeText" Text="…" FontFamily="Consolas" FontSize="38" Foreground="{StaticResource AccentBrush}"
+                       HorizontalAlignment="Left" Margin="0,0,0,8" AutomationProperties.Name="Sign-in code"/>
+            <TextBlock x:Name="LinkText" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
+            <TextBlock x:Name="BrowserHelp" Text="Couldn't open the browser. Try again or copy the link." FontSize="13" Foreground="{StaticResource ErrorBrush}" TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
+            <TextBlock x:Name="StatusText" Text="Starting…" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,22"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="OpenButton" Content="Open sign-in page" Style="{StaticResource PrimaryButton}" Click="Open_Click" IsEnabled="False" Margin="0,0,10,0"/>
+                <Button x:Name="CopyButton" Content="Copy link" Click="Copy_Click" IsEnabled="False" Margin="0,0,10,0"/>
+                <Button x:Name="CancelButton" Content="Cancel" Click="Cancel_Click" IsCancel="True"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</metro:MetroWindow>

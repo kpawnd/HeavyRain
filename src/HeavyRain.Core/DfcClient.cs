@@ -52,7 +52,7 @@ public sealed class DfcClient(ICommandRunner runner, string? restartExecutable =
     }
 
     public async Task<ChangeResult> ChangeAsync(string path, string password, BootTarget target, bool restartNow,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Func<Task<bool>>? beforeRestart = null)
     {
         if (password.Length is < 1 or > 63 || password.Any(char.IsControl))
             return new(ChangeOutcome.Rejected, "Enter a 1–63 character Deep Freeze password with command-line rights. Control characters are not supported.");
@@ -86,6 +86,9 @@ public sealed class DfcClient(ICommandRunner runner, string? restartExecutable =
             : "the next restart boots Frozen";
         if (!restartNow)
             return new(ChangeOutcome.Accepted, char.ToUpperInvariant(outcome[0]) + outcome[1..] + ".", 0);
+
+        if (beforeRestart is not null && !await beforeRestart())
+            return new(ChangeOutcome.Accepted, $"Deep Freeze accepted the change, but the wiki did not confirm its audit record. Restart manually when ready: {outcome}.", 0, RestartFailed: true);
 
         var restart = await runner.RunAsync(restartPath, ["/r", "/t", "0"], cancellationToken);
         var restarting = !restart.TimedOut && restart.Error is null && restart.ExitCode == 0;

@@ -4,6 +4,7 @@ artifacts/
 /scripts/
 /docs/VM-VALIDATION.md
 publish/
+src/HeavyRain/HeavyRain.local.props
 packages/
 *.iso
 *.iso.sha256

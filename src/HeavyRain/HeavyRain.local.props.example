@@ -1,0 +1,7 @@
+<!-- Copy to HeavyRain.local.props (not committed) and set the wiki's address to build Heavy Rain
+     with sign-in through the TA wiki. Every change then needs someone signed in. -->
+<Project>
+  <PropertyGroup>
+    <HeavyRainWikiUrl>https://wiki.example.com</HeavyRainWikiUrl>
+  </PropertyGroup>
+</Project>

@@ -76,6 +76,14 @@ dotnet publish src/HeavyRain/HeavyRain.csproj -c Release -o publish
 
 `publish/HeavyRain.exe` is the compressed single-file build. Add `-p:EnableCompressionInSingleFile=false` for a larger EXE that starts slightly faster.
 
+### Wiki sign-in (optional)
+
+Copy `src/HeavyRain/HeavyRain.local.props.example` to `HeavyRain.local.props` (it's git-ignored) and set your wiki's address before building. With a wiki configured, **Sign in** opens its approval page. Compare the code and PC name with Heavy Rain, then approve the request. The sign-in stays in memory until Heavy Rain closes, you sign out, or the token expires after at most 12 hours.
+
+- The wiki must confirm the signed-in user and record the request before Heavy Rain sends a protection change. Use a wiki build with the device-action audit API and database migration applied. Status checks remain available during a wiki outage.
+- The wiki's **Admin Logs** show approvals, protection requests, and the outcomes reported by Heavy Rain. If Heavy Rain can't confirm that the wiki recorded a Deep Freeze outcome, it leaves the accepted next-boot setting in place and skips the automatic restart.
+- Windows and the Faronics tools still enforce their own permissions and passwords.
+
 ## Credits
 
 Heavy Rain is an independent project and doesn't include Faronics software. See the [DFC](https://docs.faronics.com/deep-freeze-cloud/using-deep-freeze-cloud-console/deep-freeze-service/advanced-settings-tab/deep-freeze-command-line-syntax) and [AEC](https://support.faronics.com/help/en-ca/46-anti-executable/216-what-is-the-command-line-syntax-for-faronics-anti-executable-enterprise) command-line documentation and the [third-party notices](THIRD-PARTY-NOTICES.txt). The purple dragon is a recoloring of the older [LLVM dragon](https://llvm.org/Logo.html), owned by Apple; Heavy Rain isn't affiliated with LLVM or Apple.
