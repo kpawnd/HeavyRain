@@ -242,7 +242,7 @@ public partial class MainWindow
             AecDiagnostic.PasswordRejected => "Password rejected",
             _ => result.State switch { AecState.Enabled => "Protected", AecState.Disabled => "Unprotected", AecState.Maintenance => "Maintenance", _ => "Unknown" }
         };
-        var tone = result.State switch { AecState.Enabled => "AccentBrush", AecState.Disabled or AecState.Maintenance => "WarningBrush", _ => "MutedBrush" };
+        var tone = result.State switch { AecState.Enabled => "AccentBrush", AecState.Disabled => "ErrorBrush", AecState.Maintenance => "WarningBrush", _ => "MutedBrush" };
         AecStateText.SetResourceReference(ForegroundProperty, tone);
         AecStateStripe.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, tone);
         // Like the Deep Freeze tab, the detail is shown only when it explains an unknown state.

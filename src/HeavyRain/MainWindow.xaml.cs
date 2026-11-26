@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using HeavyRain.Core;
@@ -159,7 +160,7 @@ public partial class MainWindow : MetroWindow
     private void RenderStatus()
     {
         StateText.Text = status.State.ToString();
-        var tone = status.State switch { ProtectionState.Frozen => "AccentBrush", ProtectionState.Thawed => "WarningBrush", _ => "MutedBrush" };
+        var tone = status.State switch { ProtectionState.Frozen => "AccentBrush", ProtectionState.Thawed => "ErrorBrush", _ => "MutedBrush" };
         StateText.SetResourceReference(ForegroundProperty, tone);
         StateStripe.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, tone);
         // The detail only earns its space when it explains why the state is unknown.
@@ -180,6 +181,21 @@ public partial class MainWindow : MetroWindow
         button.SetResourceReference(StyleProperty, primary ? "PrimaryButton" : typeof(System.Windows.Controls.Button));
     }
 
+    private void Pivot_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not TabControl pivot || !ReferenceEquals(e.OriginalSource, pivot) ||
+            e.RemovedItems.Count != 1 || e.AddedItems.Count != 1) return;
+
+        var previous = pivot.Items.IndexOf(e.RemovedItems[0]);
+        var current = pivot.Items.IndexOf(e.AddedItems[0]);
+        if (previous < 0 || current < 0) return;
+
+        var transition = TransitionType.Normal;
+        if (SystemParameters.ClientAreaAnimation)
+            transition = current > previous ? TransitionType.LeftReplace : TransitionType.RightReplace;
+        TabControlHelper.SetTransition(pivot, transition);
+    }
+
     /// <summary>This session's request, shown only when Deep Freeze's own records can't be read.</summary>
     private void SetLastRequest(string text)
     {
@@ -193,7 +209,7 @@ public partial class MainWindow : MetroWindow
         SetActivity(value);
         RefreshButton.IsEnabled = BrowseButton.IsEnabled = DetectButton.IsEnabled = ExportButton.IsEnabled = !value;
         SignInButton.IsEnabled = !value;
-        PasswordInput.IsEnabled = RestartSwitch.IsEnabled = !value;
+        PasswordInput.IsEnabled = RestartTimingPanel.IsEnabled = !value;
         AecPasswordInput.IsEnabled = AecBrowseButton.IsEnabled = AecDetectButton.IsEnabled = !value;
         UpdateControls();
     }
@@ -221,7 +237,7 @@ public partial class MainWindow : MetroWindow
             return;
         }
         var path = installation!.DfcPath!;
-        var restart = RestartSwitch.IsOn;
+        var restart = RestartNowOption.IsChecked == true;
         var thaw = target == BootTarget.Thawed;
         var message = $"Computer: {Environment.MachineName}{(demo ? " (DEMO)" : "")}\n\n" +
             (thaw
@@ -239,7 +255,7 @@ public partial class MainWindow : MetroWindow
             });
         if (confirmation != MessageDialogResult.Affirmative)
         {
-            PasswordInput.Clear(); SetBusy(false); timer.Start(); return;
+            PasswordInput.Clear(); NextRestartOption.IsChecked = true; SetBusy(false); timer.Start(); return;
         }
         var password = PasswordInput.Password;
         PasswordInput.Clear();
@@ -257,7 +273,7 @@ public partial class MainWindow : MetroWindow
             if (lifetime.IsCancellationRequested) return;
             commandUncertain = result.Outcome == ChangeOutcome.Uncertain;
             Log($"{target} {(restart ? "and restart" : "next boot")}{audit?.Attribution}: {result.Outcome}. {result.Detail}");
-            // Successes show in Last request; problems show once, in a dialog, not also on the page.
+            // The next-restart panel shows the local result when the event log is unavailable.
             if (result.Outcome == ChangeOutcome.Accepted)
                 SetLastRequest((thaw ? "Thawed" : "Frozen") + (restart && !result.RestartFailed ? ", restarting now" : " from next restart") + $" · {DateTime.Now:HH:mm:ss}{(demo ? " (demo)" : "")}");
             if (result.RestartFailed)
@@ -278,7 +294,7 @@ public partial class MainWindow : MetroWindow
         }
         finally
         {
-            password = string.Empty; PasswordInput.Clear(); RestartSwitch.IsOn = false; SetBusy(false);
+            password = string.Empty; PasswordInput.Clear(); NextRestartOption.IsChecked = true; SetBusy(false);
             if (!lifetime.IsCancellationRequested) timer.Start();
         }
         await RefreshAsync(false);

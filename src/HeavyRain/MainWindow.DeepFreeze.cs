@@ -93,22 +93,23 @@ public partial class MainWindow
     {
         if (pendingBoot is { } pending)
         {
-            PendingText.Text = pending.Target == status.State ? $"Stays {pending.Target} after restart" : $"{pending.Target} at next restart";
-            PendingText.SetResourceReference(ForegroundProperty, pending.Target == ProtectionState.Thawed ? "WarningBrush" : "AccentBrush");
+            PendingText.Text = pending.Target.ToString();
+            PendingText.SetResourceReference(ForegroundProperty, "WarningBrush");
             var when = pending.RequestedAt.LocalDateTime.ToString("ddd HH:mm", CultureInfo.InvariantCulture);
             PendingDetailText.Text = $"Requested {when}{(pending.User is null ? "" : $" by {pending.User}")}{(pending.Source is null ? "" : $" from the {SourceText(pending.Source)}")}"
                 + (pending.RestartRequested ? ". The restart it asked for hasn't happened." : ".");
             return;
         }
-        PendingText.SetResourceReference(ForegroundProperty, "TextBrush");
         if (insights is null || insights.EventProblem is not null)
         {
             PendingText.Text = sessionRequest ?? "Unknown";
-            PendingDetailText.Text = sessionRequest is null ? insights?.EventProblem ?? "Checking Deep Freeze's records…" : "This session's request. Deep Freeze's records couldn't be read.";
+            PendingText.SetResourceReference(ForegroundProperty, sessionRequest is null ? "MutedBrush" : "WarningBrush");
+            PendingDetailText.Text = sessionRequest is null ? insights?.EventProblem ?? "Restart records are unavailable." : "Requested in this session. Restart records are unavailable.";
             return;
         }
-        PendingText.Text = "Nothing pending";
-        PendingDetailText.Text = "No change since the last restart.";
+        PendingText.Text = "No request recorded";
+        PendingText.SetResourceReference(ForegroundProperty, "TextBrush");
+        PendingDetailText.Text = "Since the last restart.";
     }
 
     private void RenderSchedule()

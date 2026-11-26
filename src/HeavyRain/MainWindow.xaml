@@ -8,14 +8,32 @@
         Width="980" Height="760" MinWidth="840" MinHeight="660" WindowStartupLocation="CenterScreen"
         WindowTransitionsEnabled="False" Background="{StaticResource CanvasBrush}" Foreground="{StaticResource TextBrush}"
         FontFamily="Segoe UI" FontSize="14" UseLayoutRounding="True">
+    <metro:MetroWindow.Resources>
+        <ContextMenu x:Key="WikiAccountMenu" Placement="Bottom" MinWidth="180" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource LineBrush}">
+            <MenuItem Focusable="False" IsHitTestVisible="False">
+                <MenuItem.Header>
+                    <StackPanel Margin="0,3,12,3">
+                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding RoleLabel}" FontSize="12" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0"/>
+                        <TextBlock Text="{Binding ExpiresAt.LocalDateTime, StringFormat='Session ends at {0:HH:mm}'}" FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+                    </StackPanel>
+                </MenuItem.Header>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="Sign out" Click="SignOut_Click"/>
+        </ContextMenu>
+    </metro:MetroWindow.Resources>
     <metro:MetroWindow.TitleTemplate>
         <DataTemplate><Grid/></DataTemplate>
     </metro:MetroWindow.TitleTemplate>
     <metro:MetroWindow.RightWindowCommands>
         <metro:WindowCommands ShowSeparators="False">
-            <TextBlock x:Name="MachineNameText" FontSize="12" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="0,0,14,0"/>
-            <Button x:Name="SignInButton" Content="Sign in" Click="SignIn_Click" Visibility="Collapsed" Margin="0,0,2,0" Padding="12,0"
-                    Style="{DynamicResource MahApps.Styles.Button.WindowCommands}" Foreground="{StaticResource AccentBrush}" AutomationProperties.Name="Sign in with the TA wiki"/>
+            <Button x:Name="SignInButton" Content="Sign in" Click="SignIn_Click" Visibility="Collapsed" Margin="0,0,2,0" Padding="12,0" MaxWidth="210"
+                    Style="{DynamicResource MahApps.Styles.Button.WindowCommands}" Foreground="{StaticResource AccentBrush}" AutomationProperties.Name="Sign in with the TA wiki">
+                <Button.ContentTemplate>
+                    <DataTemplate><TextBlock Text="{Binding}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/></DataTemplate>
+                </Button.ContentTemplate>
+            </Button>
             <Button x:Name="RefreshButton" Content="Refresh" Click="Refresh_Click" ToolTip="Check everything again" Margin="0,0,6,0" Padding="12,0"
                     Style="{DynamicResource MahApps.Styles.Button.WindowCommands}" Foreground="{StaticResource TextBrush}"/>
         </metro:WindowCommands>
@@ -23,81 +41,103 @@
     <Grid Background="{StaticResource CanvasBrush}">
     <Grid Margin="30,0,30,16">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-        <Grid Margin="0,0,0,18">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="72"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-            <Image Source="Assets/dragon.png" Width="64" Height="64" RenderOptions.BitmapScalingMode="HighQuality" AutomationProperties.Name="Purple dragon"/>
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0">
-                <TextBlock Text="Heavy Rain" FontSize="32" FontWeight="Light"/>
-                <TextBlock Text="Deep Freeze &amp; Anti-Executable" Foreground="{StaticResource MutedBrush}" FontSize="12" Margin="1,2,0,0"/>
+        <DockPanel Margin="0,6,0,20" LastChildFill="True">
+            <Image Source="Assets/dragon.png" Width="42" Height="42" Margin="0,0,12,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Heavy Rain" FontSize="26" FontWeight="Light" TextWrapping="NoWrap"/>
+                <TextBlock x:Name="MachineNameText" FontSize="11" FontFamily="Consolas" Foreground="{StaticResource MutedBrush}" Margin="1,2,0,0"
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
             </StackPanel>
-        </Grid>
+        </DockPanel>
         <TextBlock x:Name="DemoBanner" Grid.Row="1" Visibility="Collapsed" Text="Demo · sample data, no commands sent" Foreground="{StaticResource AccentBrush}" FontSize="12" Margin="0,0,0,12"/>
-        <metro:MetroAnimatedTabControl x:Name="MainTabs" Grid.Row="2" BorderThickness="0" Background="Transparent" Padding="0,18,0,0" SelectedIndex="0"
-                                       ItemContainerStyle="{StaticResource PivotTab}">
-            <TabItem Header="deep freeze">
+        <metro:MetroAnimatedTabControl x:Name="MainTabs" Grid.Row="2" BorderThickness="0" Background="Transparent" Padding="0,14,0,0" SelectedIndex="0"
+                                       ItemContainerStyle="{StaticResource PivotTab}" ClipToBounds="True"
+                                       metro:TabControlHelper.Transition="Normal" SelectionChanged="Pivot_SelectionChanged">
+            <TabItem Header="deep freeze" x:Name="DeepFreezeTab">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel Margin="0,4,12,0">
-                        <Grid Margin="0,0,0,24">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="310"/></Grid.ColumnDefinitions>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="3"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                <Border x:Name="StateStripe" Background="{StaticResource MutedBrush}" Margin="0,8,0,0"/>
-                                <StackPanel Grid.Column="1" Margin="17,0,28,0">
-                                    <TextBlock Text="Protection state" Style="{StaticResource Label}"/>
-                                    <TextBlock x:Name="StateText" Text="Checking…" FontSize="46" FontWeight="Light" Margin="-2,-5,0,0"/>
-                                    <TextBlock x:Name="StateNoteText" Visibility="Collapsed" FontSize="13" Margin="0,4,0,0" AutomationProperties.Name="How long the PC has been Thawed"/>
-                                    <TextBlock x:Name="StateDetailText" Visibility="Collapsed" Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                                    <TextBlock x:Name="CheckedText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
-                                </StackPanel>
-                            </Grid>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="Cloud policy" Style="{StaticResource Label}"/>
-                                <TextBlock x:Name="PolicyNameText" Text="Checking…" FontSize="22" Foreground="{StaticResource AccentBrush}"/>
-                                <TextBlock x:Name="PolicySourceText" Visibility="Collapsed" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
-                                <Grid Margin="0,16,0,0">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="Version" Style="{StaticResource Label}"/>
-                                        <TextBlock x:Name="VersionText" Text="Unavailable" FontSize="12"/>
+                    <Grid Margin="0,4,12,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="248"/></Grid.ColumnDefinitions>
+                        <StackPanel Margin="0,0,22,0">
+                            <Border Style="{StaticResource Panel}" Padding="16" VerticalAlignment="Top">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="3"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Border x:Name="StateStripe" Background="{StaticResource MutedBrush}" Margin="0,2,0,2"/>
+                                    <StackPanel Grid.Column="1" Margin="14,0,16,0">
+                                        <TextBlock Text="Current state" Style="{StaticResource Label}"/>
+                                        <TextBlock x:Name="StateText" Text="Checking…" FontSize="36" FontWeight="Light" Margin="-1,-5,0,0"/>
+                                        <TextBlock x:Name="StateNoteText" Visibility="Collapsed" FontSize="13" Margin="0,4,0,0" AutomationProperties.Name="How long the PC has been Thawed"/>
+                                        <TextBlock x:Name="StateDetailText" Visibility="Collapsed" Foreground="{StaticResource MutedBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                        <TextBlock x:Name="CheckedText" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Licence" Style="{StaticResource Label}"/>
-                                        <TextBlock x:Name="LicenseText" Text="Checking…" FontSize="12"/>
-                                    </StackPanel>
+                                    <Border Grid.Column="2" BorderBrush="{StaticResource LineBrush}" BorderThickness="1,0,0,0" Padding="16,0,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="Next restart" Style="{StaticResource Label}"/>
+                                            <TextBlock x:Name="PendingText" Text="Checking…" FontSize="22" FontWeight="Light" Margin="0,0,0,3"/>
+                                            <TextBlock x:Name="PendingDetailText" FontSize="12" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                    </Border>
                                 </Grid>
-                                <StackPanel Margin="0,16,0,0">
-                                    <TextBlock Text="Scheduled" Style="{StaticResource Label}"/>
-                                    <TextBlock x:Name="ScheduleText" Text="Checking…" FontSize="12" LineHeight="19"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Grid>
-                        <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="0,22,0,0">
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="32"/><ColumnDefinition Width="310"/></Grid.ColumnDefinitions>
+                            </Border>
+                            <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Margin="0,20,0,0" Padding="0,16,0,0">
                                 <StackPanel>
                                     <TextBlock Text="Change protection" Style="{StaticResource SectionTitle}"/>
-                                    <PasswordBox x:Name="PasswordInput" MaxLength="63" FontSize="16" PasswordChanged="Password_Changed" Margin="0,0,0,16"
+                                    <PasswordBox x:Name="PasswordInput" MaxLength="63" FontSize="16" PasswordChanged="Password_Changed" Margin="0,0,0,12"
                                                  metro:TextBoxHelper.Watermark="Command-line password" metro:TextBoxHelper.UseFloatingWatermark="True"
                                                  metro:TextBoxHelper.ClearTextButton="True" metro:PasswordBoxHelper.CapsLockWarningToolTip="Caps Lock is on"
                                                  ToolTip="A Command Line password from the Deep Freeze policy, not the Workstation password." AutomationProperties.Name="Deep Freeze command-line password"/>
-                                    <!-- The label names what switching on does; off means the change waits for the next restart. -->
-                                    <metro:ToggleSwitch x:Name="RestartSwitch" OffContent="Restart immediately" OnContent="Restart immediately" Margin="0,0,0,18"
-                                                        ToolTip="Off: the change applies at the next restart." AutomationProperties.Name="Restart immediately after confirmation"/>
-                                    <!-- Only the actions that can apply to the current state are shown; see RenderStatus. -->
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button x:Name="ThawButton" Content="Thaw PC" Click="Thaw_Click" MinWidth="200" Margin="0,0,12,0"
-                                                ToolTip="Stays Thawed until you freeze it."/>
-                                        <Button x:Name="FreezeButton" Content="Freeze PC" Click="Freeze_Click" MinWidth="200"/>
-                                    </StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                        <StackPanel x:Name="RestartTimingPanel" AutomationProperties.Name="Apply the change" Margin="0,0,14,0" VerticalAlignment="Center">
+                                            <TextBlock Text="Apply the change" Style="{StaticResource Label}" Margin="0,0,0,4"/>
+                                            <WrapPanel KeyboardNavigation.TabNavigation="Once">
+                                                <RadioButton x:Name="NextRestartOption" Content="Next restart" GroupName="DeepFreezeRestartTiming"
+                                                             IsChecked="True" MinHeight="24" Margin="0,0,18,0" Foreground="{StaticResource TextBrush}"/>
+                                                <RadioButton x:Name="RestartNowOption" Content="Restart now" GroupName="DeepFreezeRestartTiming"
+                                                             MinHeight="24" Foreground="{StaticResource TextBrush}"/>
+                                            </WrapPanel>
+                                            <TextBlock x:Name="RestartTimingHint" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Applies at the next restart. You can keep working."/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsChecked, ElementName=RestartNowOption}" Value="True">
+                                                                <Setter Property="Text" Value="Restarts this PC once the change is accepted."/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <WrapPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                            <Button x:Name="ThawButton" Content="Thaw PC" Click="Thaw_Click" MinWidth="148" Margin="0,0,12,0"
+                                                    ToolTip="Stays Thawed until you freeze it."/>
+                                            <Button x:Name="FreezeButton" Content="Freeze PC" Click="Freeze_Click" MinWidth="148"/>
+                                        </WrapPanel>
+                                    </Grid>
                                 </StackPanel>
-                                <StackPanel x:Name="PendingPanel" Grid.Column="2">
-                                    <TextBlock Text="Pending" Style="{StaticResource SectionTitle}"/>
-                                    <TextBlock x:Name="PendingText" Text="Checking…" FontSize="16" TextWrapping="Wrap"/>
-                                    <TextBlock x:Name="PendingDetailText" FontSize="12" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,2,0,0">
+                            <TextBlock Text="Cloud policy" Style="{StaticResource Label}"/>
+                            <TextBlock x:Name="PolicyNameText" Text="Checking…" FontSize="22" Foreground="{StaticResource AccentBrush}"/>
+                            <TextBlock x:Name="PolicySourceText" Visibility="Collapsed" FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,5,0,0"/>
+                            <Grid Margin="0,16,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="Version" Style="{StaticResource Label}"/>
+                                    <TextBlock x:Name="VersionText" Text="Unavailable" FontSize="12"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Licence" Style="{StaticResource Label}"/>
+                                    <TextBlock x:Name="LicenseText" Text="Checking…" FontSize="12"/>
                                 </StackPanel>
                             </Grid>
-                        </Border>
-                    </StackPanel>
+                            <StackPanel Margin="0,16,0,0">
+                                <TextBlock Text="Scheduled" Style="{StaticResource Label}"/>
+                                <TextBlock x:Name="ScheduleText" Text="Checking…" FontSize="12" LineHeight="19"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
                 </ScrollViewer>
             </TabItem>
             <TabItem Header="anti-executable" x:Name="AecTab">
@@ -201,7 +241,8 @@
             </TabItem>
             <TabItem Header="activity">
                 <metro:MetroAnimatedSingleRowTabControl x:Name="ActivityTabs" BorderThickness="0" Background="Transparent" Padding="0,10,0,0" SelectedIndex="0"
-                                                        ItemContainerStyle="{StaticResource SubPivotTab}" Margin="0,4,0,0">
+                                                        ItemContainerStyle="{StaticResource SubPivotTab}" Margin="0,4,0,0" ClipToBounds="True"
+                                                        metro:TabControlHelper.Transition="Normal" SelectionChanged="Pivot_SelectionChanged">
                     <TabItem Header="session">
                         <Grid>
                             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -219,7 +260,7 @@
                                     <DataTemplate>
                                         <Grid ToolTip="{Binding FullDetail}">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="4"/><ColumnDefinition Width="132"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <Border x:Name="Stripe" Background="{StaticResource LineBrush}" Margin="0,2,0,2" CornerRadius="2"/>
+                                            <Border x:Name="Stripe" Background="{StaticResource LineBrush}" Margin="0,2,0,2"/>
                                             <TextBlock Grid.Column="1" Text="{Binding Time}" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="10,2,0,0"/>
                                             <StackPanel Grid.Column="2">
                                                 <TextBlock x:Name="Title" Text="{Binding Title}" FontSize="13" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
@@ -272,7 +313,7 @@
             <Button x:Name="GitHubButton" Click="GitHub_Click" HorizontalAlignment="Right" Background="Transparent" BorderThickness="0" Padding="0" MinHeight="0" ToolTip="Open github.com/kpawnd" AutomationProperties.Name="Open kpawnd's GitHub profile">
                 <Button.Template>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="Transparent" Padding="4" BorderBrush="Transparent" BorderThickness="1" CornerRadius="3" x:Name="LinkBorder">
+                        <Border Background="Transparent" Padding="4" BorderBrush="Transparent" BorderThickness="1" x:Name="LinkBorder">
                             <ContentPresenter/>
                         </Border>
                         <ControlTemplate.Triggers>

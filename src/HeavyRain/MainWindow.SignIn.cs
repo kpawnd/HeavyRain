@@ -1,6 +1,8 @@
 using System.Net.Http;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
 using HeavyRain.Core;
 
 namespace HeavyRain;
@@ -33,13 +35,15 @@ public partial class MainWindow
     {
         if (wikiSession is { } session && session.IsCurrent(DateTimeOffset.UtcNow))
         {
-            SignInButton.Content = session.User.DisplayName;
-            SignInButton.ToolTip = $"Signed in as {session.User.Username} · {session.User.RoleLabel} · until {session.ExpiresAt.LocalDateTime:HH:mm}. Click to sign out.";
+            SignInButton.Content = $"{session.User.DisplayName} ▾";
+            SignInButton.ToolTip = $"Account menu · {session.User.DisplayName}";
+            AutomationProperties.SetName(SignInButton, $"Account menu for {session.User.DisplayName}");
         }
         else
         {
             SignInButton.Content = "Sign in";
             SignInButton.ToolTip = "Sign in with the TA wiki";
+            AutomationProperties.SetName(SignInButton, "Sign in with the TA wiki");
         }
     }
 
@@ -48,12 +52,24 @@ public partial class MainWindow
         if (busy) return;
         if (wikiSession is { } session && session.IsCurrent(DateTimeOffset.UtcNow))
         {
-            wikiSession = null;
-            Log($"Signed out ({session.User.Username}).");
-            RenderSignIn();
+            var menu = (ContextMenu)FindResource("WikiAccountMenu");
+            menu.PlacementTarget = SignInButton;
+            menu.DataContext = new { session.User.DisplayName, session.User.RoleLabel, session.ExpiresAt };
+            menu.IsOpen = true;
             return;
         }
         OpenSignIn();
+    }
+
+    private void SignOut_Click(object sender, RoutedEventArgs e)
+    {
+        if (busy || wikiSession is not { } session) return;
+        wikiSession = null;
+        var menu = (ContextMenu)FindResource("WikiAccountMenu");
+        menu.IsOpen = false;
+        menu.DataContext = null;
+        Log($"Signed out ({session.User.Username}).");
+        RenderSignIn();
     }
 
     internal bool SignInAtStartup(SplashWindow splash)
